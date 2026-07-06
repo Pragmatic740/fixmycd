@@ -59,12 +59,40 @@ export default function DashboardLayout({
   const [severity, setSeverity] = useState(1);
   const [latitude, setLatitude] = useState('-17.8292');
   const [longitude, setLongitude] = useState('31.0522');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Auth States
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const router = useRouter();
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Optional: file size restriction (e.g. 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size exceeds 5MB limit.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setImagePreview(base64String);
+      setImageUrl(base64String);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setImagePreview(null);
+    setImageUrl(null);
+    const fileInput = document.getElementById('photo') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  };
 
   useEffect(() => {
     async function checkAuth() {
@@ -131,6 +159,7 @@ export default function DashboardLayout({
           latitude: parseFloat(latitude),
           longitude: parseFloat(longitude),
           severity,
+          imageUrl,
         }),
       });
 
@@ -139,6 +168,8 @@ export default function DashboardLayout({
         setTitle('');
         setDescription('');
         setSeverity(1);
+        setImageUrl(null);
+        setImagePreview(null);
         setIsModalOpen(false);
         // Refresh feed
         window.location.reload();
@@ -303,6 +334,48 @@ export default function DashboardLayout({
                     <option value="5">5 - Critical</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="photo">Attach Photo</label>
+                <input
+                  type="file"
+                  id="photo"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  style={{ display: 'block', fontSize: '13px' }}
+                />
+                {imagePreview && (
+                  <div style={{ marginTop: '10px', position: 'relative' }}>
+                    <img 
+                      src={imagePreview} 
+                      alt="Preview" 
+                      style={{ width: '100%', maxHeight: '150px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={clearImage} 
+                      style={{ 
+                        position: 'absolute', 
+                        top: '5px', 
+                        right: '5px', 
+                        background: 'rgba(0,0,0,0.7)', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '50%', 
+                        width: '24px', 
+                        height: '24px', 
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '16px'
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
