@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 // Reusable SVG Icons for the navigation
 const HomeIcon = () => (
@@ -39,6 +40,14 @@ const PlusIcon = () => (
   </svg>
 );
 
+const LogOutIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+    <polyline points="16 17 21 12 16 7"></polyline>
+    <line x1="21" y1="12" x2="9" y2="12"></line>
+  </svg>
+);
+
 export default function DashboardLayout({
   children,
 }: {
@@ -51,6 +60,46 @@ export default function DashboardLayout({
   const [latitude, setLatitude] = useState('-17.8292');
   const [longitude, setLongitude] = useState('31.0522');
   const [submitting, setSubmitting] = useState(false);
+
+  // Auth States
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.authenticated) {
+            setCurrentUser(data.user);
+          } else {
+            router.push('/login');
+          }
+        } else {
+          router.push('/login');
+        }
+      } catch (err) {
+        router.push('/login');
+      } finally {
+        setLoadingUser(false);
+      }
+    }
+    checkAuth();
+  }, [router]);
+
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (response.ok) {
+        router.push('/login');
+        router.refresh();
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
 
   const detectLocation = () => {
     if (navigator.geolocation) {
@@ -105,6 +154,22 @@ export default function DashboardLayout({
     }
   };
 
+  if (loadingUser) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-secondary)',
+        fontFamily: 'Inter, sans-serif'
+      }}>
+        Verifying user session...
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Left Sidebar Navigation */}
@@ -126,7 +191,37 @@ export default function DashboardLayout({
           <Link href="/dashboard/profile" className="app-nav-link">
             <UserIcon /> <span>Profile</span>
           </Link>
+          {currentUser && (
+            <button onClick={handleLogout} className="app-nav-link" style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+              <LogOutIcon /> <span>Log Out</span>
+            </button>
+          )}
         </nav>
+
+        {currentUser && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px',
+            marginTop: 'auto',
+            borderTop: '1px solid var(--border-color)',
+            fontSize: '14px'
+          }}>
+            <div className="report-avatar" style={{ width: '32px', height: '32px', fontSize: '14px' }}>
+              {currentUser.displayName ? currentUser.displayName.charAt(0) : 'U'}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser.displayName}
+              </div>
+              <div style={{ color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px' }}>
+                @{currentUser.email.split('@')[0]}
+              </div>
+            </div>
+          </div>
+        )}
+
         <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
           Report Issue
         </button>
