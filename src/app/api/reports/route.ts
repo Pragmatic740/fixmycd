@@ -19,6 +19,7 @@ export async function GET() {
         longitude: reports.longitude,
         severity: reports.severity,
         status: reports.status,
+        imageUrl: reports.imageUrl,
         createdAt: reports.createdAt,
         userDisplayName: users.displayName,
         userEmail: users.email,
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { title, description, latitude, longitude, severity } = body;
+    const { title, description, latitude, longitude, severity, imageUrl } = body;
 
     if (!title || latitude === undefined || longitude === undefined) {
       return NextResponse.json(
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       longitude: parseFloat(longitude),
       severity: severity ? parseInt(severity) : 1,
       status: 'submitted',
+      imageUrl: imageUrl || null,
       createdAt: new Date(),
     }).returning();
 
