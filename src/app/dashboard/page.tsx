@@ -30,6 +30,7 @@ interface Report {
   longitude: number;
   severity: number;
   status: string;
+  imageUrl: string | null;
   createdAt: string;
   userDisplayName: string | null;
   userEmail: string | null;
@@ -122,6 +123,16 @@ export default function DashboardPage() {
                 
                 <h3 className="report-title">{report.title}</h3>
                 <p className="report-desc">{report.description}</p>
+
+                {report.imageUrl && (
+                  <div style={{ marginTop: '12px', marginBottom: '12px', overflow: 'hidden', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                    <img 
+                      src={report.imageUrl} 
+                      alt={report.title} 
+                      style={{ width: '100%', maxHeight: '300px', objectFit: 'cover' }} 
+                    />
+                  </div>
+                )}
                 
                 <div className="report-actions">
                   <button className="action-btn">
