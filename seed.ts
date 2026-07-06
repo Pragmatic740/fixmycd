@@ -1,9 +1,12 @@
 import { db } from './src/db';
 import { users, reports } from './src/db/schema';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 async function seed() {
-  console.log('Seeding database...');
+  console.log('Seeding Postgres database...');
   
   const userId = crypto.randomUUID();
   
@@ -41,4 +44,4 @@ async function seed() {
   console.log('Database seeded successfully!');
 }
 
-seed().catch(console.error);
+seed().catch(console.error).finally(() => process.exit(0));
