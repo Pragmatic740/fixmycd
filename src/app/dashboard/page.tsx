@@ -36,9 +36,46 @@ interface Report {
   userEmail: string | null;
 }
 
+// Haversine formula to calculate distance in km between two coordinates
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the Earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function DashboardPage() {
   const [reports, setReports] = useState<Report[]>([]);
+  const [filteredReports, setFilteredReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feedType, setFeedType] = useState<'local' | 'global'>('global');
+  
+  // Geolocation states (defaulting to seed coordinates in Harare, Zimbabwe)
+  const [userCoords, setUserCoords] = useState({ latitude: -17.8292, longitude: 31.0522 });
+
+  useEffect(() => {
+    // Attempt to get user's browser location
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserCoords({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        () => {
+          console.log('Using default seed coordinates for local feed.');
+        }
+      );
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchReports() {
@@ -58,6 +95,24 @@ export default function DashboardPage() {
     fetchReports();
   }, []);
 
+  useEffect(() => {
+    if (feedType === 'global') {
+      setFilteredReports(reports);
+    } else {
+      // Filter reports within a 2.5km radius of userCoords
+      const local = reports.filter((report) => {
+        const distance = getDistance(
+          userCoords.latitude,
+          userCoords.longitude,
+          report.latitude,
+          report.longitude
+        );
+        return distance <= 2.5;
+      });
+      setFilteredReports(local);
+    }
+  }, [reports, feedType, userCoords]);
+
   const getStatusClass = (status: string) => {
     switch (status.toLowerCase()) {
       case 'submitted':
@@ -76,21 +131,37 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div className="feed-header">
-        <h2>Local Feed</h2>
+      <div className="feed-header" style={{ paddingBottom: '0' }}>
+        <h2>Feed</h2>
+        <div className="feed-tabs" style={{ marginTop: '12px' }}>
+          <button
+            className={`feed-tab ${feedType === 'global' ? 'active' : ''}`}
+            onClick={() => setFeedType('global')}
+          >
+            Global Feed
+          </button>
+          <button
+            className={`feed-tab ${feedType === 'local' ? 'active' : ''}`}
+            onClick={() => setFeedType('local')}
+          >
+            Local (2.5km)
+          </button>
+        </div>
       </div>
       
       <div>
         {loading ? (
-          <div style={{ padding: '40px', textAlignment: 'center', color: 'var(--text-secondary)' } as any}>
-            Loading local feed...
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            Loading feed...
           </div>
-        ) : reports.length === 0 ? (
-          <div style={{ padding: '40px', textAlignment: 'center', color: 'var(--text-secondary)' } as any}>
-            No reports in your area yet. Be the first to submit!
+        ) : filteredReports.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            {feedType === 'local' 
+              ? 'No reports within 2.5km of your location. Try switching to Global Feed!' 
+              : 'No reports in the database yet.'}
           </div>
         ) : (
-          reports.map(report => (
+          filteredReports.map(report => (
             <article key={report.id} className="report-card">
               <div className="report-card-header">
                 <div className="report-avatar">
@@ -136,7 +207,7 @@ export default function DashboardPage() {
                 
                 <div className="report-actions">
                   <button className="action-btn">
-                    <UpvoteIcon /> {Math.floor(Math.random() * 50)} {/* Mock upvote counts for layout */}
+                    <UpvoteIcon /> {Math.floor(Math.random() * 50)}
                   </button>
                   <button className="action-btn">
                     <CommentIcon /> {Math.floor(Math.random() * 15)}
