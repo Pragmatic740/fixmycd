@@ -1,34 +1,50 @@
-import Database from 'better-sqlite3';
+import postgres from 'postgres';
+import dotenv from 'dotenv';
 
-const sqlite = new Database('sqlite.db');
+dotenv.config();
 
-sqlite.exec(`
-CREATE TABLE IF NOT EXISTS "users" (
-	"id" text PRIMARY KEY NOT NULL,
-	"email" text NOT NULL,
-	"display_name" text,
-	"role" text DEFAULT 'submitter',
-	"created_at" integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)),
-	CONSTRAINT "users_email_unique" UNIQUE("email")
-);
-`);
+const connectionString = process.env.DATABASE_URL;
 
-sqlite.exec(`
-CREATE TABLE IF NOT EXISTS "reports" (
-	"id" text PRIMARY KEY NOT NULL,
-	"reference_no" text NOT NULL,
-	"submitter_id" text NOT NULL,
-	"title" text NOT NULL,
-	"description" text NOT NULL,
-	"latitude" real NOT NULL,
-	"longitude" real NOT NULL,
-	"image_url" text,
-	"status" text DEFAULT 'Submitted',
-	"severity" integer DEFAULT 1,
-	"created_at" integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)),
-	"resolved_at" integer,
-	CONSTRAINT "reports_reference_no_unique" UNIQUE("reference_no")
-);
-`);
+if (!connectionString) {
+  console.error("DATABASE_URL is not defined in the environment.");
+  process.exit(1);
+}
 
-console.log("Migration complete.");
+const sql = postgres(connectionString);
+
+async function main() {
+  console.log("Running Postgres migrations...");
+  
+  await sql`
+    CREATE TABLE IF NOT EXISTS "users" (
+      "id" text PRIMARY KEY NOT NULL,
+      "email" text NOT NULL UNIQUE,
+      "display_name" text,
+      "role" text DEFAULT 'viewer' NOT NULL,
+      "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS "reports" (
+      "id" text PRIMARY KEY NOT NULL,
+      "reference_no" text NOT NULL UNIQUE,
+      "submitter_id" text NOT NULL REFERENCES "users"("id"),
+      "title" text NOT NULL,
+      "description" text,
+      "latitude" real NOT NULL,
+      "longitude" real NOT NULL,
+      "severity" integer,
+      "status" text DEFAULT 'submitted' NOT NULL,
+      "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `;
+
+  console.log("Migration complete.");
+  await sql.end();
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
