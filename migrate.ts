@@ -20,9 +20,14 @@ async function main() {
       "id" text PRIMARY KEY NOT NULL,
       "email" text NOT NULL UNIQUE,
       "display_name" text,
+      "password_hash" text,
       "role" text DEFAULT 'viewer' NOT NULL,
       "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
+  `;
+
+  await sql`
+    ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_hash" text;
   `;
 
   await sql`
