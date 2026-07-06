@@ -1,14 +1,14 @@
-import { sqliteTable, text, real, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, real, integer, timestamp } from 'drizzle-orm/pg-core';
 
-export const users = sqliteTable('users', {
+export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').unique().notNull(),
   displayName: text('display_name'),
   role: text('role').notNull().default('viewer'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const reports = sqliteTable('reports', {
+export const reports = pgTable('reports', {
   id: text('id').primaryKey(),
   referenceNo: text('reference_no').unique().notNull(),
   submitterId: text('submitter_id').notNull().references(() => users.id),
@@ -18,5 +18,5 @@ export const reports = sqliteTable('reports', {
   longitude: real('longitude').notNull(),
   severity: integer('severity'),
   status: text('status').notNull().default('submitted'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
