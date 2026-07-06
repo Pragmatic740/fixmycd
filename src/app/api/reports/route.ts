@@ -3,6 +3,7 @@ import { db } from '../../../db';
 import { reports, users } from '../../../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import crypto from 'crypto';
+import { cookies } from 'next/headers';
 
 export async function GET() {
   try {
@@ -35,6 +36,17 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const cookieStore = await cookies();
+    const userIdCookie = cookieStore.get('session_user_id');
+    const userId = userIdCookie?.value;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized. Please log in to report issues.' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { title, description, latitude, longitude, severity } = body;
 
@@ -43,21 +55,6 @@ export async function POST(request: Request) {
         { error: 'Title, latitude, and longitude are required' },
         { status: 400 }
       );
-    }
-
-    // Get first user or create a default one for submitterId
-    let userList = await db.select().from(users).limit(1);
-    let userId = userList[0]?.id;
-
-    if (!userId) {
-      userId = crypto.randomUUID();
-      await db.insert(users).values({
-        id: userId,
-        email: 'anonymous@fixmydistrict.app',
-        displayName: 'Anonymous Citizen',
-        role: 'viewer',
-        createdAt: new Date(),
-      });
     }
 
     const reportId = crypto.randomUUID();
