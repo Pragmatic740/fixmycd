@@ -1,5 +1,7 @@
+'use client';
+
 import Link from 'next/link';
-import React from 'react';
+import React, { useState } from 'react';
 
 // Reusable SVG Icons for the navigation
 const HomeIcon = () => (
@@ -30,11 +32,79 @@ const UserIcon = () => (
   </svg>
 );
 
+const PlusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+);
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [severity, setSeverity] = useState(1);
+  const [latitude, setLatitude] = useState('-17.8292');
+  const [longitude, setLongitude] = useState('31.0522');
+  const [submitting, setSubmitting] = useState(false);
+
+  const detectLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLatitude(position.coords.latitude.toFixed(6));
+          setLongitude(position.coords.longitude.toFixed(6));
+        },
+        (error) => {
+          alert('Error obtaining geolocation. Please enter coordinates manually.');
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+
+    try {
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description,
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+          severity,
+        }),
+      });
+
+      if (response.ok) {
+        // Reset form
+        setTitle('');
+        setDescription('');
+        setSeverity(1);
+        setIsModalOpen(false);
+        // Refresh feed
+        window.location.reload();
+      } else {
+        const data = await response.json();
+        alert(`Error: ${data.error || 'Failed to submit report'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Left Sidebar Navigation */}
@@ -57,7 +127,9 @@ export default function DashboardLayout({
             <UserIcon /> <span>Profile</span>
           </Link>
         </nav>
-        <button className="btn-primary">Report Issue</button>
+        <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
+          Report Issue
+        </button>
       </aside>
       
       {/* Main Feed Content */}
@@ -83,6 +155,97 @@ export default function DashboardLayout({
           </div>
         </div>
       </aside>
+
+      {/* Floating Action Button for Mobile */}
+      <button className="fab" aria-label="Report Issue" onClick={() => setIsModalOpen(true)}>
+        <PlusIcon />
+      </button>
+
+      {/* Report Issue Modal */}
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Report Infrastructure Issue</h3>
+              <button className="close-btn" onClick={() => setIsModalOpen(false)}>&times;</button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label htmlFor="title">Issue Title</label>
+                <input
+                  type="text"
+                  id="title"
+                  placeholder="e.g. Broken streetlight on Oak Ave"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="description">Detailed Description</label>
+                <textarea
+                  id="description"
+                  rows={3}
+                  placeholder="Describe the failure, exact location details, etc."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="severity">Severity Level (1-5)</label>
+                  <select
+                    id="severity"
+                    value={severity}
+                    onChange={(e) => setSeverity(parseInt(e.target.value))}
+                  >
+                    <option value="1">1 - Very Low</option>
+                    <option value="2">2 - Low</option>
+                    <option value="3">3 - Medium</option>
+                    <option value="4">4 - High</option>
+                    <option value="5">5 - Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Geographic Coordinates</label>
+                <div className="location-picker-row">
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '11px', marginBottom: '2px' }}>Latitude</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={latitude}
+                      onChange={(e) => setLatitude(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '11px', marginBottom: '2px' }}>Longitude</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={longitude}
+                      onChange={(e) => setLongitude(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button type="button" className="btn-detect" onClick={detectLocation}>
+                    📍 Auto-Detect
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '8px' }} disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Submit Report'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
