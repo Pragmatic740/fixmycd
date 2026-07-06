@@ -19,5 +19,6 @@ export const reports = pgTable('reports', {
   longitude: real('longitude').notNull(),
   severity: integer('severity'),
   status: text('status').notNull().default('submitted'),
+  imageUrl: text('image_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
