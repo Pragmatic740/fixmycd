@@ -1,4 +1,6 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
 
 // Action Bar Icons
 const UpvoteIcon = () => (
@@ -19,69 +21,57 @@ const ShareIcon = () => (
   </svg>
 );
 
-const PlusIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <line x1="5" y1="12" x2="19" y2="12"></line>
-  </svg>
-);
+interface Report {
+  id: string;
+  referenceNo: string;
+  title: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+  severity: number;
+  status: string;
+  createdAt: string;
+  userDisplayName: string | null;
+  userEmail: string | null;
+}
 
 export default function DashboardPage() {
-  // Mock data for the MVP feed
-  const reports = [
-    { 
-      id: '1', 
-      user: 'Sarah J.', 
-      handle: '@sarahj_civic', 
-      time: '2h', 
-      title: 'Deep Pothole on 4th St', 
-      category: 'Roads & Potholes', 
-      desc: 'Large pothole causing flat tires. Avoid the right lane near the intersection. Multiple cars hit it this morning.', 
-      status: 'Submitted',
-      statusClass: 'submitted',
-      upvotes: 42,
-      comments: 12
-    },
-    { 
-      id: '2', 
-      user: 'Mike T.', 
-      handle: '@miket_local', 
-      time: '5h', 
-      title: 'Traffic Light Out', 
-      category: 'Signals', 
-      desc: 'Main intersection light is completely out, 4-way stop in effect. Very dangerous during rush hour.', 
-      status: 'In Review',
-      statusClass: 'in-review',
-      upvotes: 128,
-      comments: 34
-    },
-    { 
-      id: '3', 
-      user: 'Elena R.', 
-      handle: '@elena_reports', 
-      time: '1d', 
-      title: 'Graffiti on Park Wall', 
-      category: 'Vandalism', 
-      desc: 'Offensive graffiti found on the east wall of the community park near the playground.', 
-      status: 'In Progress',
-      statusClass: 'in-progress',
-      upvotes: 15,
-      comments: 3
-    },
-    { 
-      id: '4', 
-      user: 'David W.', 
-      handle: '@davidw99', 
-      time: '2d', 
-      title: 'Burst Water Main', 
-      category: 'Water', 
-      desc: 'Water is gushing out of the sidewalk near the library. Flooding the street.', 
-      status: 'Resolved',
-      statusClass: 'resolved',
-      upvotes: 256,
-      comments: 89
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchReports() {
+      try {
+        const response = await fetch('/api/reports');
+        if (response.ok) {
+          const data = await response.json();
+          setReports(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch reports:', error);
+      } finally {
+        setLoading(false);
+      }
     }
-  ];
+
+    fetchReports();
+  }, []);
+
+  const getStatusClass = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'submitted':
+        return 'submitted';
+      case 'in review':
+      case 'review':
+        return 'in-review';
+      case 'in progress':
+        return 'in-progress';
+      case 'resolved':
+        return 'resolved';
+      default:
+        return 'submitted';
+    }
+  };
 
   return (
     <>
@@ -90,50 +80,65 @@ export default function DashboardPage() {
       </div>
       
       <div>
-        {reports.map(report => (
-          <article key={report.id} className="report-card">
-            <div className="report-card-header">
-              <div className="report-avatar">
-                {report.user.charAt(0)}
-              </div>
-              <div className="report-user-info">
-                <span className="display-name">{report.user}</span>{' '}
-                <span className="handle">{report.handle}</span>
-              </div>
-              <div className="report-timestamp">{report.time}</div>
-            </div>
-            
-            <div style={{ paddingLeft: '52px' }}>
-              <div>
-                <span className={`report-badge ${report.statusClass}`}>
-                  {report.status}
-                </span>
-                <span className="report-category">{report.category}</span>
+        {loading ? (
+          <div style={{ padding: '40px', textAlignment: 'center', color: 'var(--text-secondary)' } as any}>
+            Loading local feed...
+          </div>
+        ) : reports.length === 0 ? (
+          <div style={{ padding: '40px', textAlignment: 'center', color: 'var(--text-secondary)' } as any}>
+            No reports in your area yet. Be the first to submit!
+          </div>
+        ) : (
+          reports.map(report => (
+            <article key={report.id} className="report-card">
+              <div className="report-card-header">
+                <div className="report-avatar">
+                  {report.userDisplayName ? report.userDisplayName.charAt(0) : 'A'}
+                </div>
+                <div className="report-user-info">
+                  <span className="display-name">{report.userDisplayName || 'Anonymous'}</span>{' '}
+                  <span className="handle">@{report.userEmail ? report.userEmail.split('@')[0] : 'citizen'}</span>
+                </div>
+                <div className="report-timestamp">
+                  {new Date(report.createdAt).toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </div>
               </div>
               
-              <h3 className="report-title">{report.title}</h3>
-              <p className="report-desc">{report.desc}</p>
-              
-              <div className="report-actions">
-                <button className="action-btn">
-                  <UpvoteIcon /> {report.upvotes}
-                </button>
-                <button className="action-btn">
-                  <CommentIcon /> {report.comments}
-                </button>
-                <button className="action-btn">
-                  <ShareIcon />
-                </button>
+              <div style={{ paddingLeft: '52px' }}>
+                <div>
+                  <span className={`report-badge ${getStatusClass(report.status)}`}>
+                    {report.status}
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: '8px' }}>
+                    Ref: {report.referenceNo}
+                  </span>
+                  <span className="report-category" style={{ fontSize: '11px' }}>
+                    📍 {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+                  </span>
+                </div>
+                
+                <h3 className="report-title">{report.title}</h3>
+                <p className="report-desc">{report.description}</p>
+                
+                <div className="report-actions">
+                  <button className="action-btn">
+                    <UpvoteIcon /> {Math.floor(Math.random() * 50)} {/* Mock upvote counts for layout */}
+                  </button>
+                  <button className="action-btn">
+                    <CommentIcon /> {Math.floor(Math.random() * 15)}
+                  </button>
+                  <button className="action-btn">
+                    <ShareIcon />
+                  </button>
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          ))
+        )}
       </div>
-
-      {/* Floating Action Button for Mobile */}
-      <button className="fab" aria-label="Report Issue">
-        <PlusIcon />
-      </button>
     </>
   );
 }
