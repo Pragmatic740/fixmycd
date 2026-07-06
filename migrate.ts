@@ -41,8 +41,13 @@ async function main() {
       "longitude" real NOT NULL,
       "severity" integer,
       "status" text DEFAULT 'submitted' NOT NULL,
+      "image_url" text,
       "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
+  `;
+
+  await sql`
+    ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "image_url" text;
   `;
 
   console.log("Migration complete.");
