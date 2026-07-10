@@ -28,6 +28,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (user.disabledAt) {
+      return NextResponse.json(
+        { error: 'Account has been disabled' },
+        { status: 403 }
+      );
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
