@@ -16,7 +16,7 @@ export async function GET() {
     const userList = await db.select().from(users).where(eq(users.id, userIdCookie.value)).limit(1);
     const user = userList[0];
 
-    if (!user) {
+    if (!user || user.disabledAt) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
@@ -27,6 +27,7 @@ export async function GET() {
         email: user.email,
         displayName: user.displayName,
         role: user.role,
+        bio: user.bio,
       },
     });
   } catch (error: any) {
