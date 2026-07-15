@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "tsx migrate.ts",
-    "db:seed": "tsx seed.ts"
+    "db:seed": "tsx seed.ts",
+    "db:seed:replace-demo": "tsx seed.ts --replace-demo",
+    "test:analytics": "tsx scripts/test-analytics.ts",
+    "smoke:analytics": "tsx scripts/smoke-analytics.ts"
   },
   "dependencies": {
     "@vercel/blob": "^0.27.3",
@@ -21,7 +24,8 @@
     "postgres": "^3.4.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
