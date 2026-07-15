@@ -29,9 +29,12 @@ export async function GET(
       .orderBy(desc(reports.createdAt))
       .limit(20);
 
+    const sessionUser = await getSessionUser();
+    const isSelfOrAdmin = sessionUser && (sessionUser.id === id || sessionUser.role === 'admin');
+
     return NextResponse.json({
       id: user.id,
-      email: user.email,
+      email: isSelfOrAdmin ? user.email : undefined,
       displayName: user.displayName,
       bio: user.bio,
       role: user.role,
