@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '../../../../db';
-import { reports } from '../../../../db/schema';
+import { reports, reportStatusHistory } from '../../../../db/schema';
 import { eq } from 'drizzle-orm';
-import { getSessionUser, isModerator } from '../../../../lib/auth';
+import crypto from 'crypto';
+import { requireModerator, isAuthError } from '../../../../lib/auth';
 import { REPORT_STATUSES } from '../../../../lib/categories';
 
 async function generateAiSummary(title: string, description: string): Promise<string | null> {
@@ -40,10 +41,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const sessionUser = await getSessionUser();
-    if (!sessionUser || !isModerator(sessionUser.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const sessionUser = await requireModerator();
+    if (isAuthError(sessionUser)) return sessionUser;
 
     const { id } = await params;
     const { status, reviewNote, isHidden, featured } = await request.json();
@@ -63,17 +62,32 @@ export async function PATCH(
       aiSummary = await generateAiSummary(report.title, report.description || '');
     }
 
+    const nextStatus = status ?? report.status;
     const updated = await db
       .update(reports)
       .set({
-        status: status ?? report.status,
+        status: nextStatus,
         reviewNote: reviewNote ?? report.reviewNote,
         isHidden: isHidden ?? report.isHidden,
         featured: featured ?? report.featured,
         aiSummary,
+        resolvedAt: nextStatus === 'resolved' ? new Date() : report.resolvedAt,
+        updatedAt: new Date(),
       })
       .where(eq(reports.id, id))
       .returning();
+
+    if (status && status !== report.status) {
+      await db.insert(reportStatusHistory).values({
+        id: crypto.randomUUID(),
+        reportId: id,
+        fromStatus: report.status,
+        toStatus: status,
+        changedBy: sessionUser.id,
+        note: reviewNote || null,
+        createdAt: new Date(),
+      });
+    }
 
     return NextResponse.json(updated[0]);
   } catch (error: unknown) {
