@@ -79,6 +79,7 @@ export async function fetchReportsWithCounts(sessionUserId: string | null, param
 
   return rows.map((row) => ({
     ...row,
+    userEmail: null as string | null, // PII stripped from public feed
     createdAt: row.createdAt.toISOString(),
     userHasUpvoted: userUpvotes.has(row.id),
   }));
