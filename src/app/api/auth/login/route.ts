@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../db';
-import { users } from '../../../../db/schema';
+import { db } from '@/db';
+import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
+import { SESSION_COOKIE_OPTIONS } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +18,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find user
     const userList = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = userList[0];
 
@@ -35,7 +35,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       return NextResponse.json(
@@ -44,18 +43,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Set HTTP-only session cookie
     const cookieStore = await cookies();
-    cookieStore.set('session_user_id', user.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-    });
+    cookieStore.set('session_user_id', user.id, SESSION_COOKIE_OPTIONS);
 
-    return NextResponse.json({ success: true, user: { id: user.id, email: user.email, displayName: user.displayName } });
-  } catch (error: any) {
+    return NextResponse.json({
+      success: true,
+      user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Login failed';
     console.error('Login error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
