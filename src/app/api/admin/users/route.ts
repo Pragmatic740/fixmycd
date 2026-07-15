@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../db';
-import { users } from '../../../../db/schema';
+import { db } from '@/db';
+import { users } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
-import { getSessionUser } from '../../../../lib/auth';
+import { isAuthError, requireAdmin } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const sessionUser = await getSessionUser();
-    if (!sessionUser || sessionUser.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const admin = await requireAdmin();
+    if (isAuthError(admin)) return admin;
 
     const allUsers = await db
       .select({
@@ -18,6 +16,7 @@ export async function GET() {
         displayName: users.displayName,
         role: users.role,
         disabledAt: users.disabledAt,
+        isSynthetic: users.isSynthetic,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -38,10 +37,8 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const sessionUser = await getSessionUser();
-    if (!sessionUser || sessionUser.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const admin = await requireAdmin();
+    if (isAuthError(admin)) return admin;
 
     const { userId, disabled } = await request.json();
 
