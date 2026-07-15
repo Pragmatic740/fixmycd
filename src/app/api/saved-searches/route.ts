@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '../../../db';
 import { savedSearches } from '../../../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getSessionUser } from '../../../lib/auth';
 
@@ -61,7 +61,7 @@ export async function DELETE(request: Request) {
     const { id } = await request.json();
     await db
       .delete(savedSearches)
-      .where(eq(savedSearches.id, id));
+      .where(and(eq(savedSearches.id, id), eq(savedSearches.userId, sessionUser.id)));
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
