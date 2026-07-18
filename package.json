@@ -10,6 +10,10 @@
     "db:migrate": "tsx migrate.ts",
     "db:seed": "tsx seed.ts",
     "db:seed:replace-demo": "tsx seed.ts --replace-demo",
+    "db:seed:nbi": "tsx seed-nbi-bridges.ts",
+    "db:seed:nbi:replace": "tsx seed-nbi-bridges.ts --replace-nbi",
+    "nbi:convert": "python scripts/nbi_xlsx_to_json.py",
+    "nbi:streetview": "tsx scripts/enrich-nbi-streetview.ts",
     "test:analytics": "tsx scripts/test-analytics.ts",
     "smoke:analytics": "tsx scripts/smoke-analytics.ts"
   },
