@@ -62,6 +62,7 @@ export default function AnalyticsContent() {
     datePreset: 'year',
     startDate: '',
     endDate: '',
+    datasetKey: '',
     infrastructureClass: '',
     infrastructureType: '',
     failureType: '',
@@ -154,6 +155,7 @@ export default function AnalyticsContent() {
       datePreset: 'year',
       startDate: '',
       endDate: '',
+      datasetKey: '',
       infrastructureClass: '',
       infrastructureType: '',
       failureType: '',
@@ -228,6 +230,11 @@ export default function AnalyticsContent() {
       </div>
 
       <div className="analytics-filters">
+        <select value={filters.datasetKey} onChange={(e) => setFilter('datasetKey', e.target.value)}>
+          <option value="">All datasets</option>
+          <option value="us-demo-v1">US demo</option>
+          <option value="nbi-bridges-2026v14">NBI bridges</option>
+        </select>
         <select value={filters.datePreset} onChange={(e) => setFilter('datePreset', e.target.value)}>
           {DATE_PRESETS.map((p) => <option key={p} value={p}>{p.toUpperCase()}</option>)}
         </select>
