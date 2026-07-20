@@ -58,8 +58,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </Link>
   );
 
-  const isModerator = currentUser?.role === 'referee' || currentUser?.role === 'admin';
-  const isAdmin = currentUser?.role === 'admin';
+  const isModerator =
+    currentUser?.role === 'referee' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'super_admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
 
   if (loadingUser) {
     return <div className="session-loading">Loading...</div>;
