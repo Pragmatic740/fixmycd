@@ -243,3 +243,29 @@ export const savedSearches = pgTable('saved_searches', {
   queryJson: text('query_json').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const analyticsSavedViews = pgTable('analytics_saved_views', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull().references(() => users.id),
+  name: text('name').notNull(),
+  filtersJson: text('filters_json').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  ownerNameUnique: uniqueIndex('analytics_saved_views_owner_name').on(table.ownerId, table.name),
+  ownerIdx: index('analytics_saved_views_owner_idx').on(table.ownerId),
+}));
+
+export const analyticsShareTokens = pgTable('analytics_share_tokens', {
+  id: text('id').primaryKey(),
+  token: text('token').notNull().unique(),
+  createdBy: text('created_by').notNull().references(() => users.id),
+  savedViewId: text('saved_view_id').references(() => analyticsSavedViews.id),
+  filtersJson: text('filters_json').notNull(),
+  label: text('label'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  tokenIdx: index('analytics_share_tokens_token_idx').on(table.token),
+}));
