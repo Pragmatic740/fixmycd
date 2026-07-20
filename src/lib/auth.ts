@@ -22,11 +22,15 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 }
 
 export function isModerator(role: string) {
-  return role === 'referee' || role === 'admin';
+  return role === 'referee' || role === 'admin' || role === 'super_admin';
 }
 
 export function isAdmin(role: string) {
-  return role === 'admin';
+  return role === 'admin' || role === 'super_admin';
+}
+
+export function isSuperAdmin(role: string) {
+  return role === 'super_admin';
 }
 
 export async function requireAdmin(): Promise<SessionUser | NextResponse> {
