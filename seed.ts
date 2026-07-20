@@ -107,6 +107,7 @@ async function insertChunks<T extends Record<string, unknown>>(
 
 async function ensureCoreAccounts() {
   const core = [
+    { email: 'superadmin@fixmydistrict.app', displayName: 'Super Admin', role: 'super_admin', key: 'superadmin' },
     { email: 'admin@fixmydistrict.app', displayName: 'System Admin', role: 'admin', key: 'admin' },
     { email: 'referee@fixmydistrict.app', displayName: 'Referee Admin', role: 'referee', key: 'referee' },
     { email: 'viewer@fixmydistrict.app', displayName: 'District Viewer', role: 'viewer', key: 'viewer' },
