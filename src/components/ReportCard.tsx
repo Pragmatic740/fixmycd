@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import type { ReportListItem } from '../lib/types';
+import ShareSheet from './ShareSheet';
 
 const UpvoteIcon = ({ filled }: { filled?: boolean }) => (
   <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -60,7 +61,7 @@ interface ReportCardProps {
 
 export default function ReportCard({ report, onUpvoteToggle, style }: ReportCardProps) {
   const [bump, setBump] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const sev = severityLabel(report.severity);
 
   const handleUpvote = async (e: React.MouseEvent) => {
@@ -77,18 +78,10 @@ export default function ReportCard({ report, onUpvoteToggle, style }: ReportCard
     }
   };
 
-  const handleShare = async (e: React.MouseEvent) => {
+  const handleShare = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const url = `${window.location.origin}/dashboard/reports/${report.id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    }
+    setShowShare((v) => !v);
   };
 
   return (
@@ -157,9 +150,18 @@ export default function ReportCard({ report, onUpvoteToggle, style }: ReportCard
           </Link>
           <button type="button" className="action-btn action-share" onClick={handleShare} aria-label="Share">
             <ShareIcon />
-            <span>{copied ? 'Copied' : 'Share'}</span>
+            <span>Share</span>
           </button>
         </div>
+        {showShare && (
+          <div className="report-share-panel" onClick={(e) => e.stopPropagation()}>
+            <ShareSheet
+              urlPath={`/r/${report.id}`}
+              title={report.title}
+              text={`Check out this FixMyDistrict report: ${report.title}`}
+            />
+          </div>
+        )}
       </div>
     </article>
   );
