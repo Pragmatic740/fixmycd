@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import ShareSheet from '@/components/ShareSheet';
 
 const MiniMap = dynamic(() => import('../../../../components/MiniMap'), { ssr: false });
 
@@ -134,11 +135,16 @@ export default function ReportDetailPage() {
             <button className={`action-btn ${report.userHasUpvoted ? 'action-btn-active' : ''}`} onClick={toggleUpvote}>
               Upvote ({report.upvoteCount})
             </button>
-            <button className="action-btn" onClick={() => navigator.clipboard.writeText(window.location.href)}>
-              Copy link
-            </button>
             <button className="action-btn" onClick={flagReport}>Flag</button>
           </div>
+          <ShareSheet
+            urlPath={`/r/${report.id}`}
+            title={report.title}
+            text={`Check out this FixMyDistrict report: ${report.title}`}
+          />
+          <p className="report-ref">
+            Public link: <Link href={`/r/${report.id}`}>/r/{report.id}</Link>
+          </p>
         </div>
       </article>
 
