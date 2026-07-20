@@ -3,6 +3,7 @@ import {
   parseAnalyticsFilters,
   resolveDateRange,
   haversineKm,
+  normalizeStateFilter,
 } from '../src/lib/analytics';
 
 function testHaversine() {
@@ -38,8 +39,16 @@ function testCacheKeyStability() {
   assert.equal(a.severityMin, b.severityMin);
 }
 
+function testStateNormalize() {
+  assert.equal(normalizeStateFilter('fl'), 'FL');
+  assert.equal(normalizeStateFilter('Florida'), 'FL');
+  assert.equal(normalizeStateFilter('IA'), 'IA');
+  assert.equal(normalizeStateFilter('new york'), 'NY');
+}
+
 testHaversine();
 testFilterParsing();
 testDateRange();
 testCacheKeyStability();
+testStateNormalize();
 console.log('analytics unit checks passed');
