@@ -13,6 +13,30 @@ import type { DatePreset } from './categories';
 
 const OPEN_STATUSES = ['submitted', 'in_review', 'accepted', 'resubmit', 'duplicate', 'in_progress'];
 
+/** Normalize "Florida" / "fl" / "FL" → "FL" for US state filters */
+const US_STATE_NAME_TO_ABBR: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA',
+  kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
+  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO',
+  montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+  ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI',
+  'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT',
+  vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
+  wyoming: 'WY', 'district of columbia': 'DC', 'washington dc': 'DC', 'washington d.c.': 'DC',
+};
+
+export function normalizeStateFilter(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  const lower = trimmed.toLowerCase();
+  if (US_STATE_NAME_TO_ABBR[lower]) return US_STATE_NAME_TO_ABBR[lower];
+  if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+  return trimmed;
+}
+
 export function parseAnalyticsFilters(searchParams: URLSearchParams): AnalyticsFilters {
   const num = (key: string) => {
     const v = searchParams.get(key);
@@ -199,20 +223,42 @@ function buildConditions(filters: AnalyticsFilters) {
     conditions.push(lte(reports.latitude, bbox.north));
   }
 
-  // Location filters via join
-  if (filters.countryCode) conditions.push(eq(reportLocations.countryCode, filters.countryCode));
-  if (filters.state) conditions.push(eq(reportLocations.stateProvince, filters.state));
-  if (filters.county) conditions.push(eq(reportLocations.county, filters.county));
-  if (filters.city) conditions.push(eq(reportLocations.city, filters.city));
+  // Location filters via join (case-insensitive where users type free text)
+  if (filters.countryCode) {
+    conditions.push(sql`LOWER(${reportLocations.countryCode}) = LOWER(${filters.countryCode})`);
+  }
+  if (filters.state) {
+    const state = normalizeStateFilter(filters.state);
+    conditions.push(sql`LOWER(${reportLocations.stateProvince}) = LOWER(${state})`);
+  }
+  if (filters.county) {
+    conditions.push(ilike(reportLocations.county, `%${filters.county.trim()}%`));
+  }
+  if (filters.city) {
+    const town = filters.city.trim();
+    // Match city/metro/address, and title (NBI rows often lack city but mention town in title)
+    conditions.push(
+      or(
+        ilike(reportLocations.city, `%${town}%`),
+        ilike(reportLocations.metroArea, `%${town}%`),
+        ilike(reportLocations.addressLine, `%${town}%`),
+        ilike(reports.title, `%${town}%`)
+      )!
+    );
+  }
   if (filters.postalCode) conditions.push(eq(reportLocations.postalCode, filters.postalCode));
   if (filters.tractGeoid) conditions.push(eq(reportLocations.tractGeoid, filters.tractGeoid));
   if (filters.censusRegion) conditions.push(eq(reportLocations.censusRegion, filters.censusRegion));
   if (filters.censusDivision) conditions.push(eq(reportLocations.censusDivision, filters.censusDivision));
-  if (filters.congressionalDistrict) conditions.push(eq(reportLocations.congressionalDistrict, filters.congressionalDistrict));
+  if (filters.congressionalDistrict) {
+    conditions.push(ilike(reportLocations.congressionalDistrict, `%${filters.congressionalDistrict.trim()}%`));
+  }
   if (filters.stateSenateDistrict) conditions.push(eq(reportLocations.stateSenateDistrict, filters.stateSenateDistrict));
   if (filters.stateHouseDistrict) conditions.push(eq(reportLocations.stateHouseDistrict, filters.stateHouseDistrict));
   if (filters.schoolDistrict) conditions.push(eq(reportLocations.schoolDistrict, filters.schoolDistrict));
-  if (filters.metroArea) conditions.push(eq(reportLocations.metroArea, filters.metroArea));
+  if (filters.metroArea) {
+    conditions.push(ilike(reportLocations.metroArea, `%${filters.metroArea.trim()}%`));
+  }
 
   if (filters.reporterName) {
     conditions.push(ilike(users.displayName, `%${filters.reporterName}%`));
