@@ -327,6 +327,34 @@ async function main() {
     WHERE "infrastructure_class" IS NULL AND "category" IS NOT NULL;
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS "analytics_saved_views" (
+      "id" text PRIMARY KEY NOT NULL,
+      "owner_id" text NOT NULL REFERENCES "users"("id"),
+      "name" text NOT NULL,
+      "filters_json" text NOT NULL,
+      "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS "analytics_saved_views_owner_name" ON "analytics_saved_views" ("owner_id", "name");`;
+  await sql`CREATE INDEX IF NOT EXISTS "analytics_saved_views_owner_idx" ON "analytics_saved_views" ("owner_id");`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS "analytics_share_tokens" (
+      "id" text PRIMARY KEY NOT NULL,
+      "token" text NOT NULL UNIQUE,
+      "created_by" text NOT NULL REFERENCES "users"("id"),
+      "saved_view_id" text REFERENCES "analytics_saved_views"("id"),
+      "filters_json" text NOT NULL,
+      "label" text,
+      "expires_at" timestamp with time zone,
+      "revoked_at" timestamp with time zone,
+      "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS "analytics_share_tokens_token_idx" ON "analytics_share_tokens" ("token");`;
+
   console.log('Migration complete.');
   await sql.end();
 }
