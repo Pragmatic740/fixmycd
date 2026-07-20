@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
-import { isAuthError, requireAdmin } from '@/lib/auth';
+import { isAuthError, isSuperAdmin, requireAdmin } from '@/lib/auth';
+
+const ASSIGNABLE_BY_ADMIN = ['submitter', 'viewer', 'referee', 'admin'] as const;
+const ASSIGNABLE_BY_SUPER = [...ASSIGNABLE_BY_ADMIN, 'super_admin'] as const;
 
 export async function GET() {
   try {
@@ -40,14 +43,33 @@ export async function PATCH(request: Request) {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const { userId, disabled } = await request.json();
+    const body = await request.json();
+    const { userId, disabled, role } = body as {
+      userId?: string;
+      disabled?: boolean;
+      role?: string;
+    };
 
-    const updated = await db
-      .update(users)
-      .set({ disabledAt: disabled ? new Date() : null })
-      .where(eq(users.id, userId))
-      .returning();
+    if (!userId) {
+      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    }
 
+    const patch: { disabledAt?: Date | null; role?: string } = {};
+    if (typeof disabled === 'boolean') {
+      patch.disabledAt = disabled ? new Date() : null;
+    }
+    if (role != null) {
+      const allowed = isSuperAdmin(admin.role) ? ASSIGNABLE_BY_SUPER : ASSIGNABLE_BY_ADMIN;
+      if (!allowed.includes(role as (typeof ASSIGNABLE_BY_ADMIN)[number])) {
+        return NextResponse.json({ error: 'Cannot assign that role' }, { status: 403 });
+      }
+      if (role === 'super_admin' && !isSuperAdmin(admin.role)) {
+        return NextResponse.json({ error: 'Only super_admin can promote to super_admin' }, { status: 403 });
+      }
+      patch.role = role;
+    }
+
+    const updated = await db.update(users).set(patch).where(eq(users.id, userId)).returning();
     return NextResponse.json(updated[0]);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to update user';
