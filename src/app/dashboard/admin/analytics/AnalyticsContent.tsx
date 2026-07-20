@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart,
@@ -23,11 +24,40 @@ import type {
   ReporterStats,
   DataQualityIssue,
 } from '@/lib/analytics-types';
+import AnalyticsDashboardControls from '@/components/analytics/AnalyticsDashboardControls';
 
 const AnalyticsMap = dynamic(() => import('@/components/maps/AnalyticsMap'), {
   ssr: false,
   loading: () => <div className="feed-empty">Loading map…</div>,
 });
+
+const DEFAULT_FILTERS = {
+  datePreset: 'year',
+  startDate: '',
+  endDate: '',
+  datasetKey: '',
+  infrastructureClass: '',
+  infrastructureType: '',
+  failureType: '',
+  status: '',
+  severityMin: '',
+  severityMax: '',
+  state: '',
+  city: '',
+  county: '',
+  postalCode: '',
+  metroArea: '',
+  countryCode: 'US',
+  reporterName: '',
+  keyword: '',
+  mapLevel: 'state',
+  metric: 'count',
+  groupBy: 'infrastructureClass',
+  bucket: 'month',
+  radiusLat: '',
+  radiusLng: '',
+  radiusKm: '',
+};
 
 const COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#eab308', '#ef4444', '#06b6d4', '#f97316', '#ec4899'];
 
@@ -43,6 +73,9 @@ function useDebounced<T>(value: T, ms = 300) {
 }
 
 export default function AnalyticsContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
@@ -57,34 +90,19 @@ export default function AnalyticsContent() {
   const [table, setTable] = useState<{ total: number; rows: Record<string, unknown>[] }>({ total: 0, rows: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
 
-  const [filters, setFilters] = useState({
-    datePreset: 'year',
-    startDate: '',
-    endDate: '',
-    datasetKey: '',
-    infrastructureClass: '',
-    infrastructureType: '',
-    failureType: '',
-    status: '',
-    severityMin: '',
-    severityMax: '',
-    state: '',
-    city: '',
-    county: '',
-    postalCode: '',
-    metroArea: '',
-    countryCode: 'US',
-    reporterName: '',
-    keyword: '',
-    mapLevel: 'state',
-    metric: 'count',
-    groupBy: 'infrastructureClass',
-    bucket: 'month',
-    radiusLat: '',
-    radiusLng: '',
-    radiusKm: '',
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+
+  useEffect(() => {
+    const next = { ...DEFAULT_FILTERS };
+    searchParams.forEach((v, k) => {
+      if (k in next) (next as Record<string, string>)[k] = v;
+    });
+    setFilters(next);
+    setFiltersHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once from URL
+  }, []);
 
   const debounced = useDebounced(filters, 350);
 
@@ -97,10 +115,17 @@ export default function AnalyticsContent() {
   }, [debounced]);
 
   useEffect(() => {
+    if (!filtersHydrated) return;
+    const qs = queryString ? `?${queryString}` : '';
+    router.replace(`${pathname}${qs}`, { scroll: false });
+  }, [queryString, pathname, router, filtersHydrated]);
+
+  useEffect(() => {
     fetch('/api/auth/me')
       .then((r) => r.json())
       .then((data) => {
-        setAuthorized(!!(data.authenticated && data.user?.role === 'admin'));
+        const role = data.user?.role;
+        setAuthorized(!!(data.authenticated && (role === 'admin' || role === 'super_admin')));
       })
       .catch(() => setAuthorized(false));
   }, []);
@@ -150,34 +175,7 @@ export default function AnalyticsContent() {
 
   const setFilter = (key: string, value: string) => setFilters((prev) => ({ ...prev, [key]: value }));
 
-  const clearFilters = () =>
-    setFilters({
-      datePreset: 'year',
-      startDate: '',
-      endDate: '',
-      datasetKey: '',
-      infrastructureClass: '',
-      infrastructureType: '',
-      failureType: '',
-      status: '',
-      severityMin: '',
-      severityMax: '',
-      state: '',
-      city: '',
-      county: '',
-      postalCode: '',
-      metroArea: '',
-      countryCode: 'US',
-      reporterName: '',
-      keyword: '',
-      mapLevel: 'state',
-      metric: 'count',
-      groupBy: 'infrastructureClass',
-      bucket: 'month',
-      radiusLat: '',
-      radiusLng: '',
-      radiusKm: '',
-    });
+  const clearFilters = () => setFilters({ ...DEFAULT_FILTERS });
 
   const activeChips = Object.entries(filters).filter(
     ([k, v]) => v && !['mapLevel', 'metric', 'groupBy', 'bucket', 'datePreset', 'countryCode'].includes(k)
@@ -209,12 +207,19 @@ export default function AnalyticsContent() {
           <p className="analytics-subtitle">U.S.-first civic analytics · filter-synced charts, map & reporters</p>
         </div>
         <div className="analytics-header-actions">
-          <a className="btn-secondary btn-sm" href={`/api/admin/analytics/reports?${queryString}&format=csv`}>
-            Export CSV
-          </a>
           <Link href="/dashboard/admin" className="btn-secondary btn-sm">User admin</Link>
         </div>
       </div>
+
+      <AnalyticsDashboardControls
+        filters={filters}
+        setFilters={(next) =>
+          setFilters((prev) =>
+            typeof next === 'function' ? (next(prev) as typeof prev) : (next as typeof prev)
+          )
+        }
+        queryString={queryString}
+      />
 
       <div className="analytics-tabs">
         {([
@@ -260,8 +265,8 @@ export default function AnalyticsContent() {
           <option value="">All statuses</option>
           {REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <input placeholder="State" value={filters.state} onChange={(e) => setFilter('state', e.target.value)} />
-        <input placeholder="City" value={filters.city} onChange={(e) => setFilter('city', e.target.value)} />
+        <input placeholder="State (FL or Florida)" value={filters.state} onChange={(e) => setFilter('state', e.target.value)} />
+        <input placeholder="City / town" value={filters.city} onChange={(e) => setFilter('city', e.target.value)} />
         <input placeholder="County" value={filters.county} onChange={(e) => setFilter('county', e.target.value)} />
         <input placeholder="ZIP" value={filters.postalCode} onChange={(e) => setFilter('postalCode', e.target.value)} />
         <input placeholder="Reporter name" value={filters.reporterName} onChange={(e) => setFilter('reporterName', e.target.value)} />
