@@ -12,6 +12,9 @@ export default function LandingPage() {
         <div className="landing-nav-links">
           <Link href="#features">Features</Link>
           <Link href="#how-it-works">How it works</Link>
+          <Link href="/public" className="btn-secondary">
+            Browse reports
+          </Link>
           <Link href="/dashboard" className="btn-primary">
             Launch App
           </Link>
@@ -26,11 +29,11 @@ export default function LandingPage() {
           Hold local authorities accountable and track repairs in real-time.
         </p>
         <div className="landing-hero-actions">
-          <Link href="/dashboard" className="btn-primary">
+          <Link href="/signup" className="btn-primary">
             Start Reporting
           </Link>
-          <Link href="/dashboard" className="btn-secondary">
-            View the Map
+          <Link href="/public" className="btn-secondary">
+            Browse reports
           </Link>
         </div>
       </section>
