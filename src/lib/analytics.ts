@@ -37,6 +37,114 @@ export function normalizeStateFilter(raw: string): string {
   return trimmed;
 }
 
+function toFiniteNumber(value: unknown): number | undefined {
+  if (value == null || value === '') return undefined;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const s = String(value).trim();
+  return s === '' ? undefined : s;
+}
+
+/**
+ * Normalize raw filter objects (saved views, share tokens, UI payloads)
+ * so empty strings never reach Postgres numeric comparisons.
+ */
+export function sanitizeAnalyticsFilters(raw: unknown): AnalyticsFilters {
+  if (!raw || typeof raw !== 'object') return {};
+  const src = raw as Record<string, unknown>;
+
+  const num = (key: string) => toFiniteNumber(src[key]);
+  const str = (key: string) => toOptionalString(src[key]);
+  const bool = (key: string) => {
+    const v = src[key];
+    if (v === true || v === 'true') return true;
+    if (v === false || v === 'false') return false;
+    return undefined;
+  };
+
+  let west = num('west');
+  let south = num('south');
+  let east = num('east');
+  let north = num('north');
+
+  const bboxRaw = src.bbox;
+  if (bboxRaw && typeof bboxRaw === 'object') {
+    const b = bboxRaw as Record<string, unknown>;
+    west = west ?? toFiniteNumber(b.west);
+    south = south ?? toFiniteNumber(b.south);
+    east = east ?? toFiniteNumber(b.east);
+    north = north ?? toFiniteNumber(b.north);
+  }
+
+  const filters: AnalyticsFilters = {
+    reporterId: str('reporterId'),
+    reporterName: str('reporterName'),
+    countryCode: str('countryCode'),
+    censusRegion: str('censusRegion'),
+    censusDivision: str('censusDivision'),
+    state: str('state'),
+    county: str('county'),
+    city: str('city'),
+    postalCode: str('postalCode'),
+    tractGeoid: str('tractGeoid'),
+    congressionalDistrict: str('congressionalDistrict'),
+    stateSenateDistrict: str('stateSenateDistrict'),
+    stateHouseDistrict: str('stateHouseDistrict'),
+    schoolDistrict: str('schoolDistrict'),
+    serviceAreaId: str('serviceAreaId'),
+    metroArea: str('metroArea'),
+    radiusLat: num('radiusLat'),
+    radiusLng: num('radiusLng'),
+    radiusKm: num('radiusKm'),
+    bbox:
+      west != null && south != null && east != null && north != null
+        ? { west, south, east, north }
+        : undefined,
+    datePreset: (str('datePreset') as DatePreset) || undefined,
+    startDate: str('startDate'),
+    endDate: str('endDate'),
+    infrastructureClass: str('infrastructureClass') || str('category'),
+    infrastructureType: str('infrastructureType') || str('subcategory'),
+    failureType: str('failureType'),
+    postAction: str('postAction'),
+    status: str('status'),
+    severityMin: num('severityMin') ?? num('severity'),
+    severityMax: num('severityMax') ?? num('severity'),
+    estimatedCostMin: num('estimatedCostMin'),
+    estimatedCostMax: num('estimatedCostMax'),
+    actualCostMin: num('actualCostMin'),
+    actualCostMax: num('actualCostMax'),
+    peopleAffectedMin: num('peopleAffectedMin'),
+    evidenceType: str('evidenceType'),
+    keyword: str('keyword'),
+    datasetKey: str('datasetKey'),
+    isSynthetic: bool('isSynthetic'),
+    limit: num('limit'),
+    offset: num('offset'),
+    sortBy: str('sortBy'),
+    sortDir: (str('sortDir') as 'asc' | 'desc') || undefined,
+    groupBy: str('groupBy'),
+    bucket: (str('bucket') as AnalyticsFilters['bucket']) || undefined,
+    mapLevel: str('mapLevel'),
+    metric: str('metric'),
+  };
+
+  // Drop undefined keys for cleaner persisted JSON
+  for (const key of Object.keys(filters) as (keyof AnalyticsFilters)[]) {
+    if (filters[key] === undefined) delete filters[key];
+  }
+  return filters;
+}
+
+/** Compact filter object for saving/sharing (no empty strings on numeric fields). */
+export function filtersForPersist(raw: unknown): AnalyticsFilters {
+  return sanitizeAnalyticsFilters(raw);
+}
+
 export function parseAnalyticsFilters(searchParams: URLSearchParams): AnalyticsFilters {
   const num = (key: string) => {
     const v = searchParams.get(key);
@@ -792,6 +900,9 @@ export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports
     'stateProvince',
     'county',
     'postalCode',
+    'latitude',
+    'longitude',
+    'googleMapsUrl',
     'estimatedCost',
     'actualCost',
     'peopleAffected',
@@ -802,6 +913,10 @@ export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports
   ];
   const lines = [headers.join(',')];
   for (const r of rows) {
+    const mapsUrl =
+      r.latitude != null && r.longitude != null
+        ? `https://www.google.com/maps?q=${r.latitude},${r.longitude}`
+        : '';
     const vals = [
       r.id,
       r.title,
@@ -814,6 +929,9 @@ export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports
       r.stateProvince,
       r.county,
       r.postalCode,
+      r.latitude,
+      r.longitude,
+      mapsUrl,
       r.estimatedCost,
       r.actualCost,
       r.peopleAffected,
@@ -827,5 +945,6 @@ export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports
     });
     lines.push(vals.join(','));
   }
-  return lines.join('\n');
+  // UTF-8 BOM so Excel on Windows opens special characters correctly
+  return `\uFEFF${lines.join('\n')}`;
 }
