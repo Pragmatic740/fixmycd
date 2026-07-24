@@ -2,13 +2,17 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import ShareSheet from '@/components/ShareSheet';
+import { downloadBlob, downloadTextFile } from '@/lib/download-file';
 
 type Filters = Record<string, string>;
 
 interface SavedView {
   id: string;
   name: string;
+  description: string | null;
   filters: Filters;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Props {
@@ -17,15 +21,30 @@ interface Props {
   queryString: string;
 }
 
+function formatViewLabel(v: SavedView): string {
+  const date = v.updatedAt
+    ? new Date(v.updatedAt).toISOString().slice(0, 10)
+    : '';
+  const desc = v.description?.trim();
+  if (desc && date) return `${v.name} — ${desc} (${date})`;
+  if (desc) return `${v.name} — ${desc}`;
+  if (date) return `${v.name} (${date})`;
+  return v.name;
+}
+
 export default function AnalyticsDashboardControls({ filters, setFilters, queryString }: Props) {
   const [views, setViews] = useState<SavedView[]>([]);
   const [selectedViewId, setSelectedViewId] = useState('');
   const [manageOpen, setManageOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveDescription, setSaveDescription] = useState('');
   const [sharePath, setSharePath] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
   const [datasetKey, setDatasetKey] = useState(`csv-import-${new Date().toISOString().slice(0, 10)}`);
   const [useStockPhotos, setUseStockPhotos] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const loadViews = useCallback(async () => {
     const res = await fetch('/api/admin/analytics/views');
@@ -37,6 +56,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
     loadViews();
   }, [loadViews]);
 
+  const selectedView = views.find((v) => v.id === selectedViewId);
+
   const applyView = (id: string) => {
     setSelectedViewId(id);
     const view = views.find((v) => v.id === id);
@@ -44,32 +65,64 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
     setFilters((prev) => {
       const next = { ...prev };
       Object.keys(next).forEach((k) => {
-        if (k in view.filters) next[k] = String(view.filters[k] ?? '');
+        if (k in view.filters) next[k] = String((view.filters as Record<string, unknown>)[k] ?? '');
         else if (!['mapLevel', 'metric', 'groupBy', 'bucket'].includes(k)) next[k] = '';
       });
       Object.entries(view.filters).forEach(([k, v]) => {
-        next[k] = String(v ?? '');
+        if (k === 'bbox' || v == null || typeof v === 'object') return;
+        next[k] = String(v);
       });
+      const bbox = (view.filters as { bbox?: { west?: number; south?: number; east?: number; north?: number } }).bbox;
+      if (bbox && bbox.west != null && bbox.south != null && bbox.east != null && bbox.north != null) {
+        next.west = String(bbox.west);
+        next.south = String(bbox.south);
+        next.east = String(bbox.east);
+        next.north = String(bbox.north);
+      }
       return next;
     });
   };
 
-  const saveView = async () => {
-    const name = window.prompt('Name this dashboard');
-    if (!name?.trim()) return;
+  const persistView = async (overwrite: boolean) => {
+    const name = saveName.trim();
+    if (!name) {
+      setMessage('Enter a dashboard name');
+      return;
+    }
     const res = await fetch('/api/admin/analytics/views', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), filters }),
+      body: JSON.stringify({
+        name,
+        description: saveDescription.trim().slice(0, 40),
+        filters,
+        overwrite,
+      }),
     });
     const data = await res.json();
+    if (res.status === 409 && !overwrite) {
+      if (window.confirm(`A dashboard named “${name}” already exists. Overwrite it?`)) {
+        await persistView(true);
+      }
+      return;
+    }
     if (!res.ok) {
       setMessage(data.error || 'Save failed');
       return;
     }
-    setMessage(`Saved “${data.name}”`);
+    setMessage(data.overwritten ? `Overwrote “${data.name}”` : `Saved “${data.name}”`);
+    setSaveOpen(false);
+    setSaveName('');
+    setSaveDescription('');
     await loadViews();
     setSelectedViewId(data.id);
+  };
+
+  const openSavePanel = () => {
+    const current = selectedView;
+    setSaveName(current?.name || '');
+    setSaveDescription(current?.description || '');
+    setSaveOpen(true);
   };
 
   const renameView = async (id: string, current: string) => {
@@ -111,17 +164,28 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
     setMessage('Share link created');
   };
 
-  const exportSetupCsv = () => {
+  const exportSetupCsv = async () => {
     const lines = ['key,value'];
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v != null) lines.push(`${k},${JSON.stringify(String(v))}`);
     });
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `dashboard-setup-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    await downloadTextFile(`\uFEFF${lines.join('\n')}`, `dashboard-setup-${Date.now()}.csv`);
+  };
+
+  const exportDataCsv = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/admin/analytics/reports?${queryString}&format=csv`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMessage(data.error || 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      await downloadBlob(blob, `fixmydistrict-reports-${Date.now()}.csv`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const importSetupCsv = async (file: File) => {
@@ -174,19 +238,26 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
         >
           <option value="">Saved dashboards…</option>
           {views.map((v) => (
-            <option key={v.id} value={v.id}>{v.name}</option>
+            <option key={v.id} value={v.id}>{formatViewLabel(v)}</option>
           ))}
         </select>
-        <button type="button" className="btn-secondary btn-sm" onClick={saveView}>Save dashboard</button>
+        <button type="button" className="btn-secondary btn-sm" onClick={openSavePanel}>
+          Save dashboard
+        </button>
         <button type="button" className="btn-secondary btn-sm" onClick={() => setManageOpen((o) => !o)}>
           Manage list
         </button>
         <button type="button" className="btn-primary btn-sm" onClick={shareDashboard}>
           Share this dashboard
         </button>
-        <a className="btn-secondary btn-sm" href={`/api/admin/analytics/reports?${queryString}&format=csv`}>
-          Export data CSV
-        </a>
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          onClick={exportDataCsv}
+          disabled={exporting}
+        >
+          {exporting ? 'Exporting…' : 'Export data CSV'}
+        </button>
         <button type="button" className="btn-secondary btn-sm" onClick={exportSetupCsv}>
           Export setup CSV
         </button>
@@ -205,6 +276,45 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
         </label>
       </div>
 
+      <p className="analytics-hint">
+        Setup CSV saves/restores filter parameters only. Data CSV exports report rows (use Upload data CSV below to import inventory).
+      </p>
+
+      {selectedView && (
+        <p className="analytics-hint">
+          Showing reports for: <strong>{selectedView.name}</strong>
+          {selectedView.description ? ` — ${selectedView.description}` : ''}
+        </p>
+      )}
+
+      {saveOpen && (
+        <div className="analytics-save-panel">
+          <h4>Save dashboard</h4>
+          <div className="analytics-dashboard-row">
+            <input
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              placeholder="Dashboard name"
+              aria-label="Dashboard name"
+            />
+            <input
+              value={saveDescription}
+              onChange={(e) => setSaveDescription(e.target.value.slice(0, 40))}
+              placeholder="Title / description (max 40)"
+              maxLength={40}
+              aria-label="Dashboard description"
+            />
+            <span className="analytics-hint">{saveDescription.length}/40</span>
+            <button type="button" className="btn-primary btn-sm" onClick={() => persistView(false)}>
+              Save
+            </button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => setSaveOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {manageOpen && (
         <div className="analytics-manage-list">
           <h4>Saved dashboards</h4>
@@ -212,7 +322,9 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
           <ul>
             {views.map((v) => (
               <li key={v.id}>
-                <button type="button" className="linkish" onClick={() => applyView(v.id)}>{v.name}</button>
+                <button type="button" className="linkish" onClick={() => applyView(v.id)}>
+                  {formatViewLabel(v)}
+                </button>
                 <span>
                   <button type="button" className="btn-secondary btn-sm" onClick={() => renameView(v.id, v.name)}>Rename</button>
                   <button type="button" className="btn-secondary btn-sm" onClick={() => deleteView(v.id)}>Delete</button>
