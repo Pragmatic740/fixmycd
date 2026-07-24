@@ -4,6 +4,7 @@ import { eq, desc, and, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { analyticsShareTokens } from '@/db/schema';
 import { isAuthError, requireAdmin } from '@/lib/auth';
+import { filtersForPersist } from '@/lib/analytics';
 
 export async function GET() {
   try {
@@ -38,10 +39,10 @@ export async function POST(request: Request) {
     if (isAuthError(admin)) return admin;
 
     const body = await request.json();
-    const filters = body.filters;
-    if (!filters || typeof filters !== 'object') {
+    if (!body.filters || typeof body.filters !== 'object') {
       return NextResponse.json({ error: 'filters required' }, { status: 400 });
     }
+    const filters = filtersForPersist(body.filters);
 
     const id = crypto.randomUUID();
     const token = crypto.randomBytes(24).toString('base64url');
