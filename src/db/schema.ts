@@ -248,6 +248,7 @@ export const analyticsSavedViews = pgTable('analytics_saved_views', {
   id: text('id').primaryKey(),
   ownerId: text('owner_id').notNull().references(() => users.id),
   name: text('name').notNull(),
+  description: text('description'),
   filtersJson: text('filters_json').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
