@@ -1571,7 +1571,9 @@ button {
 }
 .map-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 .map-source-note {
   font-size: 11px;
@@ -1845,6 +1847,14 @@ button {
   border-top: 1px solid var(--border);
 }
 .analytics-hint { font-size: 13px; color: var(--text-secondary); margin: 6px 0 0; }
+.analytics-save-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0;
+  background: var(--bg-primary);
+}
+.analytics-save-panel h4 { margin: 0 0 8px; font-size: 14px; }
 .file-btn { cursor: pointer; display: inline-flex; align-items: center; }
 .checkbox-inline {
   display: inline-flex;
