@@ -337,6 +337,7 @@ async function main() {
       "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
     );
   `;
+  await sql`ALTER TABLE "analytics_saved_views" ADD COLUMN IF NOT EXISTS "description" text;`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS "analytics_saved_views_owner_name" ON "analytics_saved_views" ("owner_id", "name");`;
   await sql`CREATE INDEX IF NOT EXISTS "analytics_saved_views_owner_idx" ON "analytics_saved_views" ("owner_id");`;
 
