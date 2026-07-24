@@ -4,6 +4,13 @@ import { eq, and, desc } from 'drizzle-orm';
 import { db } from '@/db';
 import { analyticsSavedViews } from '@/db/schema';
 import { isAuthError, requireAdmin } from '@/lib/auth';
+import { filtersForPersist } from '@/lib/analytics';
+
+function normalizeDescription(raw: unknown): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim().slice(0, 40);
+  return s === '' ? null : s;
+}
 
 export async function GET() {
   try {
@@ -20,6 +27,7 @@ export async function GET() {
       rows.map((r) => ({
         id: r.id,
         name: r.name,
+        description: r.description,
         filters: JSON.parse(r.filtersJson),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
@@ -38,28 +46,76 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const name = String(body.name || '').trim();
-    const filters = body.filters;
-    if (!name || !filters || typeof filters !== 'object') {
+    const description = normalizeDescription(body.description);
+    const overwrite = Boolean(body.overwrite);
+    if (!name || !body.filters || typeof body.filters !== 'object') {
       return NextResponse.json({ error: 'name and filters are required' }, { status: 400 });
+    }
+    const filters = filtersForPersist(body.filters);
+    const now = new Date();
+
+    if (overwrite) {
+      const existing = await db
+        .select()
+        .from(analyticsSavedViews)
+        .where(and(eq(analyticsSavedViews.ownerId, admin.id), eq(analyticsSavedViews.name, name)))
+        .limit(1);
+
+      if (existing[0]) {
+        const updated = await db
+          .update(analyticsSavedViews)
+          .set({
+            description,
+            filtersJson: JSON.stringify(filters),
+            updatedAt: now,
+          })
+          .where(eq(analyticsSavedViews.id, existing[0].id))
+          .returning();
+
+        return NextResponse.json({
+          id: updated[0].id,
+          name: updated[0].name,
+          description: updated[0].description,
+          filters,
+          createdAt: updated[0].createdAt.toISOString(),
+          updatedAt: updated[0].updatedAt.toISOString(),
+          overwritten: true,
+        });
+      }
     }
 
     const id = crypto.randomUUID();
-    const now = new Date();
-    await db.insert(analyticsSavedViews).values({
-      id,
-      ownerId: admin.id,
-      name,
-      filtersJson: JSON.stringify(filters),
-      createdAt: now,
-      updatedAt: now,
-    });
+    try {
+      await db.insert(analyticsSavedViews).values({
+        id,
+        ownerId: admin.id,
+        name,
+        description,
+        filtersJson: JSON.stringify(filters),
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to save view';
+      if (String(message).includes('unique') || String(message).includes('duplicate')) {
+        return NextResponse.json({ error: 'A dashboard with that name already exists' }, { status: 409 });
+      }
+      throw error;
+    }
 
-    return NextResponse.json({ id, name, filters, createdAt: now.toISOString() }, { status: 201 });
+    return NextResponse.json(
+      {
+        id,
+        name,
+        description,
+        filters,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+      { status: 201 }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to save view';
-    if (String(message).includes('unique') || String(message).includes('duplicate')) {
-      return NextResponse.json({ error: 'A dashboard with that name already exists' }, { status: 409 });
-    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -73,11 +129,17 @@ export async function PATCH(request: Request) {
     const id = String(body.id || '');
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    const updates: Partial<{ name: string; filtersJson: string; updatedAt: Date }> = {
+    const updates: Partial<{
+      name: string;
+      description: string | null;
+      filtersJson: string;
+      updatedAt: Date;
+    }> = {
       updatedAt: new Date(),
     };
     if (body.name != null) updates.name = String(body.name).trim();
-    if (body.filters != null) updates.filtersJson = JSON.stringify(body.filters);
+    if (body.description !== undefined) updates.description = normalizeDescription(body.description);
+    if (body.filters != null) updates.filtersJson = JSON.stringify(filtersForPersist(body.filters));
 
     const updated = await db
       .update(analyticsSavedViews)
@@ -89,6 +151,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({
       id: updated[0].id,
       name: updated[0].name,
+      description: updated[0].description,
       filters: JSON.parse(updated[0].filtersJson),
       updatedAt: updated[0].updatedAt.toISOString(),
     });
