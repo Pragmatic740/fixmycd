@@ -57,6 +57,10 @@ const DEFAULT_FILTERS = {
   radiusLat: '',
   radiusLng: '',
   radiusKm: '',
+  west: '',
+  south: '',
+  east: '',
+  north: '',
 };
 
 const COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#eab308', '#ef4444', '#06b6d4', '#f97316', '#ec4899'];
@@ -93,6 +97,13 @@ export default function AnalyticsContent() {
   const [filtersHydrated, setFiltersHydrated] = useState(false);
 
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [mapAutoUpdate, setMapAutoUpdate] = useState(false);
+  const [latestMapBounds, setLatestMapBounds] = useState<{
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  } | null>(null);
 
   useEffect(() => {
     const next = { ...DEFAULT_FILTERS };
@@ -103,6 +114,33 @@ export default function AnalyticsContent() {
     setFiltersHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once from URL
   }, []);
+
+  const applyMapExtent = useCallback(
+    (bounds: { west: number; south: number; east: number; north: number }) => {
+      setFilters((prev) => ({
+        ...prev,
+        west: bounds.west.toFixed(5),
+        south: bounds.south.toFixed(5),
+        east: bounds.east.toFixed(5),
+        north: bounds.north.toFixed(5),
+      }));
+    },
+    []
+  );
+
+  const clearMapExtent = () => {
+    setFilters((prev) => ({ ...prev, west: '', south: '', east: '', north: '' }));
+  };
+
+  const mapExtentActive = Boolean(filters.west && filters.south && filters.east && filters.north);
+
+  const onMapBoundsChange = useCallback(
+    (bounds: { west: number; south: number; east: number; north: number }) => {
+      setLatestMapBounds(bounds);
+      if (mapAutoUpdate) applyMapExtent(bounds);
+    },
+    [mapAutoUpdate, applyMapExtent]
+  );
 
   const debounced = useDebounced(filters, 350);
 
@@ -398,6 +436,33 @@ export default function AnalyticsContent() {
                     <option value="estimatedCost">Estimated cost</option>
                     <option value="peopleAffected">People affected</option>
                   </select>
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={mapAutoUpdate}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setMapAutoUpdate(on);
+                        if (on && latestMapBounds) applyMapExtent(latestMapBounds);
+                      }}
+                    />
+                    Auto-update from map view
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => {
+                      if (latestMapBounds) applyMapExtent(latestMapBounds);
+                    }}
+                    disabled={!latestMapBounds}
+                  >
+                    Map Extent Update
+                  </button>
+                  {mapExtentActive && (
+                    <button type="button" className="btn-secondary btn-sm" onClick={clearMapExtent}>
+                      Clear map extent
+                    </button>
+                  )}
                 </div>
               </div>
               <AnalyticsMap
@@ -405,16 +470,20 @@ export default function AnalyticsContent() {
                 areas={mapAreas}
                 boundaries={boundaries}
                 metric={filters.metric}
+                fitToPoints={!mapExtentActive && !mapAutoUpdate}
                 radiusLat={filters.radiusLat ? Number(filters.radiusLat) : undefined}
                 radiusLng={filters.radiusLng ? Number(filters.radiusLng) : undefined}
                 radiusKm={filters.radiusKm ? Number(filters.radiusKm) : undefined}
+                onBoundsChange={onMapBoundsChange}
                 onRadiusPick={(lat: number, lng: number) => {
                   setFilter('radiusLat', lat.toFixed(5));
                   setFilter('radiusLng', lng.toFixed(5));
                   if (!filters.radiusKm) setFilter('radiusKm', '25');
                 }}
               />
-              <p className="map-source-note">Boundaries: U.S. Census TIGERweb (Current vintage). Joined to report aggregates by GEOID/name.</p>
+              <p className="map-source-note">
+                Boundaries: U.S. Census TIGERweb (Current vintage). Use Map Extent Update (or auto-update) to filter widgets and the table to the visible map area.
+              </p>
             </div>
           )}
 
