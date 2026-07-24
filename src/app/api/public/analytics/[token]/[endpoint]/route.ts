@@ -8,9 +8,17 @@ import {
   getMapAreas,
   getAnalyticsReports,
   reportsToCsv,
+  sanitizeAnalyticsFilters,
 } from '@/lib/analytics';
 import { resolveShareToken } from '@/lib/analytics-share';
 import type { AnalyticsFilters } from '@/lib/analytics-types';
+
+function optionalParamNumber(searchParams: URLSearchParams, key: string): number | undefined {
+  const v = searchParams.get(key);
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export async function GET(
   request: Request,
@@ -25,15 +33,15 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     // Snapshot filters win; allow only presentation overrides
-    const filters: AnalyticsFilters = {
+    const filters: AnalyticsFilters = sanitizeAnalyticsFilters({
       ...share.filters,
       groupBy: searchParams.get('groupBy') || share.filters.groupBy,
       bucket: (searchParams.get('bucket') as AnalyticsFilters['bucket']) || share.filters.bucket,
       mapLevel: searchParams.get('mapLevel') || share.filters.mapLevel,
       metric: searchParams.get('metric') || share.filters.metric,
-      limit: searchParams.get('limit') ? Number(searchParams.get('limit')) : share.filters.limit,
-      offset: searchParams.get('offset') ? Number(searchParams.get('offset')) : share.filters.offset,
-    };
+      limit: optionalParamNumber(searchParams, 'limit') ?? share.filters.limit,
+      offset: optionalParamNumber(searchParams, 'offset') ?? share.filters.offset,
+    });
 
     const meta = {
       label: share.label,
