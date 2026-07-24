@@ -14,6 +14,8 @@ type GeoFeatureCollection = {
   }>;
 };
 
+export type MapBounds = { west: number; south: number; east: number; north: number };
+
 interface AnalyticsMapProps {
   points: MapPoint[];
   areas: MapAreaAggregate[];
@@ -23,6 +25,9 @@ interface AnalyticsMapProps {
   radiusLng?: number;
   radiusKm?: number;
   onRadiusPick?: (lat: number, lng: number) => void;
+  /** When false, skip auto-fitting to points (map-extent filter mode). Default true. */
+  fitToPoints?: boolean;
+  onBoundsChange?: (bounds: MapBounds) => void;
 }
 
 function metricValue(area: MapAreaAggregate, metric: string): number {
@@ -51,6 +56,16 @@ function colorScale(value: number, max: number) {
   return '#ef4444';
 }
 
+function boundsFromMap(map: L.Map): MapBounds {
+  const b = map.getBounds();
+  return {
+    west: b.getWest(),
+    south: b.getSouth(),
+    east: b.getEast(),
+    north: b.getNorth(),
+  };
+}
+
 function ClickRadius({ onRadiusPick }: { onRadiusPick?: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e) {
@@ -60,16 +75,33 @@ function ClickRadius({ onRadiusPick }: { onRadiusPick?: (lat: number, lng: numbe
   return null;
 }
 
-function FitBounds({ points }: { points: MapPoint[] }) {
+function BoundsTracker({ onBoundsChange }: { onBoundsChange?: (bounds: MapBounds) => void }) {
+  const map = useMap();
+  useMapEvents({
+    moveend() {
+      onBoundsChange?.(boundsFromMap(map));
+    },
+    zoomend() {
+      onBoundsChange?.(boundsFromMap(map));
+    },
+  });
+  useEffect(() => {
+    onBoundsChange?.(boundsFromMap(map));
+  }, [map, onBoundsChange]);
+  return null;
+}
+
+function FitBounds({ points, enabled }: { points: MapPoint[]; enabled: boolean }) {
   const map = useMap();
   useEffect(() => {
+    if (!enabled) return;
     if (points.length === 0) {
       map.setView([39.8283, -98.5795], 4);
       return;
     }
     const bounds = L.latLngBounds(points.map((p) => [p.latitude, p.longitude] as [number, number]));
     map.fitBounds(bounds.pad(0.2));
-  }, [points, map]);
+  }, [points, map, enabled]);
   return null;
 }
 
@@ -82,6 +114,8 @@ export default function AnalyticsMap({
   radiusLng,
   radiusKm,
   onRadiusPick,
+  fitToPoints = true,
+  onBoundsChange,
 }: AnalyticsMapProps) {
   const areaMap = useMemo(() => {
     const m = new Map<string, MapAreaAggregate>();
@@ -103,7 +137,6 @@ export default function AnalyticsMap({
     for (const k of keys) {
       area = areaMap.get(k);
       if (area) break;
-      // fuzzy: state abbrev or name contains
       for (const [ak, av] of areaMap) {
         if (ak.includes(k) || k.includes(ak)) {
           area = av;
@@ -144,7 +177,8 @@ export default function AnalyticsMap({
           attribution='&copy; OpenStreetMap'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FitBounds points={points} />
+        <FitBounds points={points} enabled={fitToPoints} />
+        <BoundsTracker onBoundsChange={onBoundsChange} />
         <ClickRadius onRadiusPick={onRadiusPick} />
 
         {boundaries && (
