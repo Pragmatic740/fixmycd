@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { analyticsShareTokens } from '@/db/schema';
 import type { AnalyticsFilters } from './analytics-types';
+import { sanitizeAnalyticsFilters } from './analytics';
 
 export async function resolveShareToken(token: string): Promise<{
   id: string;
@@ -25,6 +26,6 @@ export async function resolveShareToken(token: string): Promise<{
   return {
     id: row.id,
     label: row.label,
-    filters: JSON.parse(row.filtersJson) as AnalyticsFilters,
+    filters: sanitizeAnalyticsFilters(JSON.parse(row.filtersJson)),
   };
 }
