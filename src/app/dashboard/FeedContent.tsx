@@ -3,18 +3,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import ReportCard from '../../components/ReportCard';
-import ReportFilters from '../../components/ReportFilters';
+import ReportFilters, {
+  EMPTY_REPORT_FILTERS,
+  filtersFromParams,
+  filtersToParams,
+  type ReportFilterValues,
+} from '../../components/ReportFilters';
+import { useCurrentUser } from '../../components/CurrentUserContext';
+import { useApproxLocation } from '../../components/useApproxLocation';
 import type { ReportListItem } from '../../lib/types';
 
-function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+const PAGE_SIZE = 20;
+/** "Nearby" tab radius when no distance filter is set. */
+const NEARBY_KM = 5;
+const KEYWORD_DEBOUNCE_MS = 300;
 
 function FeedSkeleton() {
   return (
@@ -39,67 +41,32 @@ function FeedSkeleton() {
   );
 }
 
-interface FiltersState {
-  category: string;
-  status: string;
-  severity: string;
-  keyword: string;
-  startDate: string;
-  endDate: string;
-  radiusKm: string;
-}
-
-const EMPTY_FILTERS: FiltersState = {
-  category: '',
-  status: '',
-  severity: '',
-  keyword: '',
-  startDate: '',
-  endDate: '',
-  radiusKm: '',
-};
-
 export default function DashboardFeed() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useCurrentUser();
+  const location = useApproxLocation();
   const [reports, setReports] = useState<ReportListItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [feedType, setFeedType] = useState<'local' | 'global'>('global');
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [userCoords, setUserCoords] = useState({ latitude: -17.8292, longitude: 31.0522 });
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ReportFilterValues>(() => filtersFromParams(new URLSearchParams(searchParams.toString())));
+  const [keywordInput, setKeywordInput] = useState(filters.keyword);
 
-  const [filters, setFilters] = useState<FiltersState>({
-    category: searchParams.get('category') || '',
-    status: searchParams.get('status') || '',
-    severity: searchParams.get('severity') || '',
-    keyword: searchParams.get('keyword') || '',
-    startDate: searchParams.get('startDate') || '',
-    endDate: searchParams.get('endDate') || '',
-    radiusKm: searchParams.get('radiusKm') || '',
-  });
+  const activeFilterCount = (Object.keys(EMPTY_REPORT_FILTERS) as (keyof ReportFilterValues)[]).filter(
+    (k) => filters[k]
+  ).length;
 
-  const activeFilterCount = [
-    filters.category,
-    filters.status,
-    filters.severity,
-    filters.keyword,
-    filters.startDate,
-    filters.endDate,
-    filters.radiusKm,
-  ].filter(Boolean).length;
-
+  // Debounce the search box so each keystroke doesn't trigger a request.
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setUserCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        () => {}
-      );
-    }
-  }, []);
+    if (keywordInput === filters.keyword) return;
+    const t = setTimeout(() => setFilters((prev) => ({ ...prev, keyword: keywordInput.trim() })), KEYWORD_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [keywordInput, filters.keyword]);
 
   useEffect(() => {
     if (!toast) return;
@@ -107,82 +74,78 @@ export default function DashboardFeed() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Sync filters → URL
+  // Sync filters → URL (shareable, survives reload)
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (filters.category) params.set('category', filters.category);
-    if (filters.status) params.set('status', filters.status);
-    if (filters.severity) params.set('severity', filters.severity);
-    if (filters.keyword) params.set('keyword', filters.keyword);
-    if (filters.startDate) params.set('startDate', filters.startDate);
-    if (filters.endDate) params.set('endDate', filters.endDate);
-    if (filters.radiusKm) params.set('radiusKm', filters.radiusKm);
-
-    const newUrl = params.toString()
-      ? `/dashboard?${params.toString()}`
-      : '/dashboard';
-    router.replace(newUrl, { scroll: false });
+    const qs = filtersToParams(filters).toString();
+    const radius = filters.radiusKm ? `${qs ? '&' : ''}radiusKm=${encodeURIComponent(filters.radiusKm)}` : '';
+    const next = qs || radius ? `/dashboard?${qs}${radius}` : '/dashboard';
+    router.replace(next, { scroll: false });
   }, [filters, router]);
 
   const buildQuery = useCallback(
     (currentOffset: number) => {
-      const params = new URLSearchParams();
-      if (filters.category) params.set('category', filters.category);
-      if (filters.status) params.set('status', filters.status);
-      if (filters.severity) params.set('severity', filters.severity);
-      if (filters.keyword) params.set('keyword', filters.keyword);
-      if (filters.startDate) params.set('startDate', filters.startDate);
-      if (filters.endDate) params.set('endDate', filters.endDate);
-      if (filters.radiusKm) {
-        params.set('radiusLat', String(userCoords.latitude));
-        params.set('radiusLng', String(userCoords.longitude));
-        params.set('radiusKm', filters.radiusKm);
-      }
-      params.set('limit', '20');
+      const effective =
+        feedType === 'local' && !filters.radiusKm ? { ...filters, radiusKm: String(NEARBY_KM) } : filters;
+      const params = filtersToParams(effective, location);
+      params.set('limit', String(PAGE_SIZE));
       params.set('offset', String(currentOffset));
       return params.toString();
     },
-    [filters, userCoords]
+    [filters, feedType, location]
   );
 
-  const fetchReports = useCallback(
-    async (currentOffset: number, append = false) => {
-      if (append) setLoadingMore(true);
-      else setLoading(true);
-      try {
-        const res = await fetch(`/api/reports?${buildQuery(currentOffset)}`);
-        if (res.ok) {
-          const data: ReportListItem[] = await res.json();
-          setReports((prev) => (append ? [...prev, ...data] : data));
-          setHasMore(data.length === 20);
-        }
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    [buildQuery]
-  );
+  // First page: refetch whenever the query changes. "Loading" is derived from
+  // whether the last completed request matches the current query.
+  const firstPageQuery = buildQuery(0);
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const loading = loadedQuery !== `${firstPageQuery}#${retryCount}`;
 
   useEffect(() => {
-    setOffset(0);
-    fetchReports(0, false);
-  }, [filters, fetchReports]);
+    const controller = new AbortController();
+    const key = `${firstPageQuery}#${retryCount}`;
+    (async () => {
+      try {
+        const res = await fetch(`/api/reports?${firstPageQuery}`, { signal: controller.signal });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          setError(data?.error === 'Invalid input' ? 'Some filters are invalid. Please adjust them.' : 'Could not load reports.');
+          setReports([]);
+          setHasMore(false);
+        } else {
+          const data: ReportListItem[] = await res.json();
+          setError(null);
+          setReports(data);
+          setHasMore(data.length === PAGE_SIZE);
+        }
+        setOffset(0);
+        setLoadedQuery(key);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        setError('Could not load reports. Check your connection.');
+        setLoadedQuery(key);
+      }
+    })();
+    return () => controller.abort();
+  }, [firstPageQuery, retryCount]);
 
-  const filteredReports =
-    feedType === 'global'
-      ? reports
-      : reports.filter(
-          (r) =>
-            getDistance(
-              userCoords.latitude,
-              userCoords.longitude,
-              r.latitude,
-              r.longitude
-            ) <= 2.5
-        );
+  const loadMore = async () => {
+    const next = offset + PAGE_SIZE;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/reports?${buildQuery(next)}`);
+      if (res.ok) {
+        const data: ReportListItem[] = await res.json();
+        setReports((prev) => [...prev, ...data]);
+        setHasMore(data.length === PAGE_SIZE);
+        setOffset(next);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
-  const handleFilterChange = (key: string, value: string) => {
+  const handleFilterChange = (key: keyof ReportFilterValues, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -198,24 +161,27 @@ export default function DashboardFeed() {
 
   const handleSaveSearch = async () => {
     const name = prompt('Name this search:');
-    if (!name) return;
-    await fetch('/api/saved-searches', {
+    if (!name?.trim()) return;
+    const res = await fetch('/api/saved-searches', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, queryJson: filters }),
+      body: JSON.stringify({ name: name.trim().slice(0, 80), queryJson: filters }),
     });
-    setToast('Search saved');
+    const data = res.ok ? null : await res.json().catch(() => null);
+    setToast(res.ok ? 'Search saved' : data?.error || 'Could not save this search');
   };
 
   const clearFilters = () => {
-    setFilters(EMPTY_FILTERS);
+    setKeywordInput('');
+    setFilters(EMPTY_REPORT_FILTERS);
   };
 
-  const loadMore = () => {
-    const next = offset + 20;
-    setOffset(next);
-    fetchReports(next, true);
-  };
+  const usesLocation = !!filters.radiusKm || feedType === 'local';
+  const locationNote =
+    usesLocation && location.source === 'fallback'
+      ? 'Location unavailable — showing distances from Harare city centre. Allow location access for results near you.'
+      : null;
+  const filteredReports = reports;
 
   return (
     <>
@@ -248,8 +214,11 @@ export default function DashboardFeed() {
           <div className="feed-filters-panel">
             <ReportFilters
               filters={filters}
+              keywordInput={keywordInput}
+              onKeywordInput={setKeywordInput}
               onChange={handleFilterChange}
-              onSaveSearch={handleSaveSearch}
+              onSaveSearch={user ? handleSaveSearch : undefined}
+              radiusNote={locationNote}
             />
             {activeFilterCount > 0 && (
               <button type="button" className="clear-filters-btn" onClick={clearFilters}>
@@ -259,6 +228,16 @@ export default function DashboardFeed() {
           </div>
         )}
       </div>
+
+      {feedType === 'local' && locationNote && <div className="feed-notice">{locationNote}</div>}
+      {error && (
+        <div className="feed-notice feed-notice-error" role="alert">
+          {error}{' '}
+          <button type="button" className="btn-secondary btn-sm" onClick={() => setRetryCount((n) => n + 1)}>
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="feed-list">
         {loading && reports.length === 0 ? (
@@ -291,10 +270,10 @@ export default function DashboardFeed() {
           ))
         )}
 
-        {hasMore && feedType === 'global' && !loading && filteredReports.length > 0 && (
+        {hasMore && !loading && filteredReports.length > 0 && (
           <button
             className="btn-secondary load-more-btn"
-            onClick={loadMore}
+            onClick={() => void loadMore()}
             disabled={loadingMore}
           >
             {loadingMore ? 'Loading…' : 'Show more'}

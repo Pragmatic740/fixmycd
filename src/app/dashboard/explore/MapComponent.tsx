@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import Link from 'next/link';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
@@ -109,7 +108,8 @@ function ClusterLayer({ reports }: { reports: Report[] }) {
 export default function MapComponent({ queryString = '' }: { queryString?: string }) {
   const [reports, setReports] = useState<Report[]>([]);
   const [userPos, setUserPos] = useState<[number, number] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
+  const loading = loadedQuery !== queryString;
   const defaultPosition: [number, number] = [-17.8292, 31.0522];
 
   useEffect(() => {
@@ -120,11 +120,19 @@ export default function MapComponent({ queryString = '' }: { queryString?: strin
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/reports?${queryString}&limit=100`)
-      .then((r) => r.ok ? r.json() : [])
-      .then(setReports)
-      .finally(() => setLoading(false));
+    const controller = new AbortController();
+    fetch(`/api/reports?${queryString}${queryString ? '&' : ''}limit=100`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Report[]) => {
+        setReports(Array.isArray(data) ? data : []);
+        setLoadedQuery(queryString);
+      })
+      .catch((err: Error) => {
+        if (err.name === 'AbortError') return;
+        setReports([]);
+        setLoadedQuery(queryString);
+      });
+    return () => controller.abort();
   }, [queryString]);
 
   if (loading) {
