@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import type { ReportListItem } from '../lib/types';
-import { handleFor } from '../lib/utils';
+import { formatRelativeTime, handleFor } from '../lib/utils';
 import { loginUrlFor } from '../lib/redirect';
 import { useCurrentUser } from './CurrentUserContext';
 import { usePathname } from 'next/navigation';
@@ -36,18 +36,6 @@ function getStatusClass(status: string) {
     case 'resolved': return 'resolved';
     default: return 'submitted';
   }
-}
-
-function relativeTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'now';
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function severityLabel(severity: number | null) {
@@ -123,8 +111,8 @@ export default function ReportCard({
             </Link>
             <span className="handle">@{handleFor(report.userDisplayName)}</span>
             <span className="dot-sep">·</span>
-            <time className="report-timestamp" dateTime={report.createdAt}>
-              {relativeTime(report.createdAt)}
+            <time className="report-timestamp" dateTime={report.createdAt} title={new Date(report.createdAt).toLocaleString()}>
+              {formatRelativeTime(report.createdAt, { compact: true })}
             </time>
           </div>
         </div>
