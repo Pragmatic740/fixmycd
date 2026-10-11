@@ -268,3 +268,8 @@ export const shareCreateSchema = z.object({
       .optional()
   ),
 });
+
+export const unsubscribeSchema = z.object({
+  u: z.string().min(1).max(100),
+  t: z.string().min(1).max(200),
+});
