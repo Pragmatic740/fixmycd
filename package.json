@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
+    "vercel-build": "tsx migrate.ts && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "tsx migrate.ts",

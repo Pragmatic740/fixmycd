@@ -65,8 +65,13 @@ export async function POST(request: Request) {
       user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Login failed';
-    console.error('Login error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Drizzle wraps driver errors ("Failed query: ..."); the real reason
+    // (e.g. a missing column) is on `cause`. Log it, but never send SQL to the client.
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined;
+    console.error('Login error:', error, cause ? `\nCause: ${cause}` : '');
+    return NextResponse.json(
+      { error: 'Login is temporarily unavailable. Please try again later.' },
+      { status: 500 }
+    );
   }
 }
