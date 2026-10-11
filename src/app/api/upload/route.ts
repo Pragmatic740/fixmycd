@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import { getSessionUserId } from '../../../lib/auth';
+import { getSessionUser } from '../../../lib/auth';
 
 export async function POST(request: Request) {
   try {
-    const userId = await getSessionUserId();
-    if (!userId) {
+    const user = await getSessionUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const blob = await put(`reports/${userId}/${Date.now()}-${file.name}`, file, {
+      const blob = await put(`reports/${user.id}/${Date.now()}-${file.name}`, file, {
         access: 'public',
         token: process.env.BLOB_READ_WRITE_TOKEN,
       });

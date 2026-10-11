@@ -305,3 +305,23 @@ export const shareViewEvents = pgTable('share_view_events', {
   tokenIdx: index('share_view_token_idx').on(table.tokenId),
   viewedAtIdx: index('share_view_viewed_at_idx').on(table.viewedAt),
 }));
+
+// Server-side login sessions. The cookie holds a random token; only its
+// SHA-256 hash is stored, so a database leak does not leak live sessions.
+export const sessions = pgTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userIdx: index('sessions_user_idx').on(table.userId),
+  expiresIdx: index('sessions_expires_idx').on(table.expiresAt),
+}));
+
+// Fixed-window request counters for rate limiting (key = bucket + subject).
+export const rateLimits = pgTable('rate_limits', {
+  key: text('key').primaryKey(),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  count: integer('count').notNull().default(0),
+});

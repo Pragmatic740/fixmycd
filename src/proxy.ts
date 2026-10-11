@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// Must match SESSION_COOKIE in src/lib/auth.ts. The proxy only uses it to
+// decide whether to redirect to /login; authorization happens server-side.
+const SESSION_COOKIE = 'fmd_session';
+
 export function proxy(request: NextRequest) {
-  const session = request.cookies.get('session_user_id');
+  const session = request.cookies.get(SESSION_COOKIE);
   const path = request.nextUrl.pathname;
 
   // Pages that require authentication

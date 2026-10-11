@@ -390,6 +390,27 @@ export async function runMigrations(client: postgres.Sql): Promise<void> {
     `;
     await sql`CREATE INDEX IF NOT EXISTS "share_view_token_idx" ON "share_view_events" ("token_id");`;
     await sql`CREATE INDEX IF NOT EXISTS "share_view_viewed_at_idx" ON "share_view_events" ("viewed_at");`;
-    
+
+    // Server-side sessions (cookie carries a random token; we store its hash)
+    await sql`
+      CREATE TABLE IF NOT EXISTS "sessions" (
+        "id" text PRIMARY KEY NOT NULL,
+        "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+        "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        "expires_at" timestamp with time zone NOT NULL,
+        "last_seen_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS "sessions_user_idx" ON "sessions" ("user_id");`;
+    await sql`CREATE INDEX IF NOT EXISTS "sessions_expires_idx" ON "sessions" ("expires_at");`;
+
+    // Rate limiting counters
+    await sql`
+      CREATE TABLE IF NOT EXISTS "rate_limits" (
+        "key" text PRIMARY KEY NOT NULL,
+        "window_start" timestamp with time zone NOT NULL,
+        "count" integer DEFAULT 0 NOT NULL
+      );
+    `;
   });
 }
