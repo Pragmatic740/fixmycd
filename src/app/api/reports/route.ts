@@ -7,39 +7,29 @@ import { containsBlockedContent } from '@/lib/content-filter';
 import { fetchReportsWithCounts } from '@/lib/reports';
 import { resolveInfrastructure } from '@/lib/categories';
 import { enrichReportLocation } from '@/lib/geo/enrich';
+import { and, eq } from 'drizzle-orm';
+import { badRequest, parseJsonBody, parseQuery, serverError } from '@/lib/http';
+import { enforceRateLimit } from '@/lib/rate-limit';
+import { reportCreateSchema, reportFeedQuery } from '@/lib/validation';
 
 export async function GET(request: Request) {
   try {
+    const query = parseQuery(new URL(request.url).searchParams, reportFeedQuery);
+    if (!query.ok) return query.response;
+
     const sessionUser = await getSessionUser();
-    const { searchParams } = new URL(request.url);
-
-    const data = await fetchReportsWithCounts(sessionUser?.id ?? null, {
-      category: searchParams.get('category') || undefined,
-      status: searchParams.get('status') || undefined,
-      severity: searchParams.get('severity') || undefined,
-      severityMin: searchParams.get('severityMin') || undefined,
-      severityMax: searchParams.get('severityMax') || undefined,
-      keyword: searchParams.get('keyword') || undefined,
-      featured: searchParams.get('featured') || undefined,
-      userId: searchParams.get('userId') || undefined,
-      limit: searchParams.get('limit') || undefined,
-      offset: searchParams.get('offset') || undefined,
-      startDate: searchParams.get('startDate') || undefined,
-      endDate: searchParams.get('endDate') || undefined,
-      west: searchParams.get('west') || undefined,
-      south: searchParams.get('south') || undefined,
-      east: searchParams.get('east') || undefined,
-      north: searchParams.get('north') || undefined,
-      radiusLat: searchParams.get('radiusLat') || undefined,
-      radiusLng: searchParams.get('radiusLng') || undefined,
-      radiusKm: searchParams.get('radiusKm') || undefined,
-    });
-
+    const data = await fetchReportsWithCounts(sessionUser?.id ?? null, query.data);
     return NextResponse.json(data);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch reports';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'reports GET');
   }
+}
+
+/** FMD-YYMMDD-XXXXXX: unique without a lookup (the old 4-digit random number collided). */
+function newReferenceNo(now: Date): string {
+  const ymd = now.toISOString().slice(2, 10).replace(/-/g, '');
+  const suffix = crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6);
+  return `FMD-${ymd}-${suffix}`;
 }
 
 export async function POST(request: Request) {
@@ -49,7 +39,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized. Please log in to report issues.' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const limited = await enforceRateLimit('report', sessionUser.id);
+    if (limited) return limited;
+
+    const parsed = await parseJsonBody(request, reportCreateSchema);
+    if (!parsed.ok) return parsed.response;
     const {
       title,
       description,
@@ -94,10 +88,15 @@ export async function POST(request: Request) {
       county,
       stateProvince,
       countryCode,
-    } = body;
+    } = parsed.data;
 
-    if (!title || latitude === undefined || longitude === undefined) {
-      return NextResponse.json({ error: 'Title, latitude, and longitude are required' }, { status: 400 });
+    if (parentReportId) {
+      const [parent] = await db
+        .select({ id: reports.id })
+        .from(reports)
+        .where(and(eq(reports.id, parentReportId), eq(reports.isHidden, false)))
+        .limit(1);
+      if (!parent) return badRequest('Invalid input', { parentReportId: 'Report not found' });
     }
 
     const blocked = containsBlockedContent(`${title} ${description || ''}`);
@@ -105,57 +104,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: blocked }, { status: 400 });
     }
 
-    const sev = severity ? parseInt(severity, 10) : 1;
-    if (sev < 1 || sev > 5) {
-      return NextResponse.json({ error: 'Severity must be between 1 and 5' }, { status: 400 });
-    }
-
     const infra = resolveInfrastructure(category, subcategory, infrastructureClass, infrastructureType);
     const reportId = crypto.randomUUID();
-    const referenceNo = `FMD-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date();
+    const referenceNo = newReferenceNo(now);
 
     const newReport = await db.insert(reports).values({
       id: reportId,
       referenceNo,
       submitterId: sessionUser.id,
       title,
-      description: description || '',
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      severity: sev,
+      description: description ?? '',
+      latitude,
+      longitude,
+      severity,
       status: 'submitted',
       category: infra.category,
       subcategory: infra.subcategory,
       infrastructureClass: infra.infrastructureClass,
       infrastructureType: infra.infrastructureType,
-      failureType: failureType || null,
-      suspectedCause: suspectedCause || null,
-      assetName: assetName || null,
-      responsibleAgency: responsibleAgency || null,
+      failureType: failureType ?? null,
+      suspectedCause: suspectedCause ?? null,
+      assetName: assetName ?? null,
+      responsibleAgency: responsibleAgency ?? null,
       isRecurrence: !!isRecurrence,
-      postAction: postAction || 'failure',
-      postType: postType || 'new',
-      parentReportId: parentReportId || null,
-      imageUrl: imageUrl || null,
-      videoUrl: videoUrl || null,
-      audioUrl: audioUrl || null,
-      compassDirection: compassDirection ? parseFloat(compassDirection) : null,
-      evidenceType: evidenceType || (imageUrl ? 'photo' : null),
-      observationConfidence: observationConfidence ? parseInt(observationConfidence, 10) : null,
-      estimatedCostLow: estimatedCostLow != null ? parseFloat(estimatedCostLow) : null,
-      estimatedCostHigh: estimatedCostHigh != null ? parseFloat(estimatedCostHigh) : null,
-      actualCost: actualCost != null ? parseFloat(actualCost) : null,
-      currency: currency || 'USD',
-      costEstimateSource: costEstimateSource || null,
-      costConfidence: costConfidence ? parseInt(costConfidence, 10) : null,
-      peopleAffected: peopleAffected != null ? parseInt(peopleAffected, 10) : null,
-      householdsAffected: householdsAffected != null ? parseInt(householdsAffected, 10) : null,
-      outageDurationHours: outageDurationHours != null ? parseFloat(outageDurationHours) : null,
+      postAction,
+      postType,
+      parentReportId: parentReportId ?? null,
+      imageUrl: imageUrl ?? null,
+      videoUrl: videoUrl ?? null,
+      audioUrl: audioUrl ?? null,
+      compassDirection: compassDirection ?? null,
+      evidenceType: evidenceType ?? (imageUrl ? 'photo' : null),
+      observationConfidence: observationConfidence ?? null,
+      estimatedCostLow: estimatedCostLow ?? null,
+      estimatedCostHigh: estimatedCostHigh ?? null,
+      actualCost: actualCost ?? null,
+      currency,
+      costEstimateSource: costEstimateSource ?? null,
+      costConfidence: costConfidence ?? null,
+      peopleAffected: peopleAffected ?? null,
+      householdsAffected: householdsAffected ?? null,
+      outageDurationHours: outageDurationHours ?? null,
       safetyImpact: !!safetyImpact,
       accessibilityImpact: !!accessibilityImpact,
       environmentalImpact: !!environmentalImpact,
-      tags: Array.isArray(tags) ? tags.join(',') : tags || null,
+      tags: tags ?? null,
       occurredAt: occurredAt ? new Date(occurredAt) : now,
       updatedAt: now,
       createdAt: now,
@@ -172,13 +166,13 @@ export async function POST(request: Request) {
     });
 
     try {
-      await enrichReportLocation(reportId, parseFloat(latitude), parseFloat(longitude), {
+      await enrichReportLocation(reportId, latitude, longitude, {
         addressLine,
         city,
         postalCode,
         county,
         stateProvince,
-        countryCode: countryCode || undefined,
+        countryCode,
       });
     } catch (err) {
       console.error('Geography enrichment failed:', err);
@@ -186,7 +180,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(newReport[0], { status: 201 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to create report';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'reports POST');
   }
 }

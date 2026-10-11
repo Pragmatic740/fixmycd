@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import ShareSheet from '@/components/ShareSheet';
 import { EndorsementsSection } from '@/components/reports/EndorsementsSection';
-import { formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime, handleFor } from '@/lib/utils';
 
 const MiniMap = dynamic(() => import('../../../../components/MiniMap'), { ssr: false });
 
@@ -29,7 +29,6 @@ interface ReportDetail {
   createdAt: string;
   submitterId: string;
   userDisplayName: string | null;
-  userEmail: string | null;
   upvoteCount: number;
   commentCount: number;
   userHasUpvoted: boolean;
@@ -40,7 +39,6 @@ interface Comment {
   body: string;
   createdAt: string;
   userDisplayName: string | null;
-  userEmail: string | null;
 }
 
 export default function ReportDetailPage() {
@@ -117,7 +115,6 @@ export default function ReportDetailPage() {
           {
             ...c,
             userDisplayName: 'You',
-            userEmail: null,
             createdAt: new Date().toISOString(),
           },
           ...comments,
@@ -187,10 +184,7 @@ export default function ReportDetailPage() {
           <div className="report-user-info">
             <span className="display-name">{report.userDisplayName}</span>
             <span className="handle">
-              @
-              {report.userEmail
-                ? report.userEmail.split('@')[0]
-                : report.userDisplayName || 'user'}
+              @{handleFor(report.userDisplayName)}
             </span>
           </div>
         </div>

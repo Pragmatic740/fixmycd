@@ -1,41 +1,69 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { endorsements, users, reports } from '@/db/schema';
-import { eq, desc, and } from 'drizzle-orm';
-import { isAuthError, requireExpert } from '@/lib/auth';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
+import { getSessionUser, isAuthError, requireExpert } from '@/lib/auth';
+import { containsBlockedContent } from '@/lib/content-filter';
+import { sendEndorsementNotification } from '@/lib/email';
+import { notFound, parseJsonBody, serverError } from '@/lib/http';
+import { createNotification, emailRecipient, runAfterResponse } from '@/lib/notify';
+import { unsubscribeUrlFor } from '@/lib/unsubscribe';
+import { endorsementSchema } from '@/lib/validation';
+
+async function visibleReport(id: string) {
+  const [report] = await db
+    .select({ id: reports.id, title: reports.title, submitterId: reports.submitterId })
+    .from(reports)
+    .where(and(eq(reports.id, id), eq(reports.isHidden, false)))
+    .limit(1);
+  return report ?? null;
+}
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    if (!(await visibleReport(id))) return notFound('Report not found');
 
+    // Endorsements from disabled experts no longer count.
     const rows = await db
       .select({
         id: endorsements.id,
-        reportId: endorsements.reportId,
         expertUserId: endorsements.expertUserId,
         severityLevel: endorsements.severityLevel,
         note: endorsements.note,
         createdAt: endorsements.createdAt,
+        updatedAt: endorsements.updatedAt,
         expertName: users.displayName,
+        expertRole: users.role,
       })
       .from(endorsements)
-      .leftJoin(users, eq(endorsements.expertUserId, users.id))
-      .where(eq(endorsements.reportId, id))
+      .innerJoin(users, eq(endorsements.expertUserId, users.id))
+      .where(and(eq(endorsements.reportId, id), isNull(users.disabledAt)))
       .orderBy(desc(endorsements.createdAt));
 
-    return NextResponse.json(
-      rows.map((r) => ({
-        ...r,
-        createdAt: r.createdAt.toISOString(),
-      }))
-    );
+    const sessionUser = await getSessionUser();
+    const items = rows.map(({ expertUserId, ...r }) => ({
+      ...r,
+      isMine: sessionUser?.id === expertUserId,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt?.toISOString() ?? null,
+    }));
+    const average = items.length
+      ? Math.round((items.reduce((s, e) => s + e.severityLevel, 0) / items.length) * 10) / 10
+      : null;
+
+    return NextResponse.json({
+      items,
+      count: items.length,
+      averageSeverity: average,
+      myEndorsement: items.find((e) => e.isMine) ?? null,
+    });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch endorsements';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'endorsements GET');
   }
 }
 
@@ -48,33 +76,31 @@ export async function POST(
     if (isAuthError(userCheck)) return userCheck;
     const user = userCheck;
 
+    const parsed = await parseJsonBody(request, endorsementSchema);
+    if (!parsed.ok) return parsed.response;
+    const { severityLevel, note } = parsed.data;
+
+    if (note) {
+      const blocked = containsBlockedContent(note);
+      if (blocked) return NextResponse.json({ error: blocked }, { status: 400 });
+    }
+
     const { id } = await params;
-    const body = await request.json();
-    const { severityLevel, note } = body;
+    const report = await visibleReport(id);
+    if (!report) return notFound('Report not found');
 
-    if (!severityLevel || severityLevel < 1 || severityLevel > 5) {
-      return NextResponse.json(
-        { error: 'severityLevel must be between 1 and 5' },
-        { status: 400 }
-      );
-    }
-
-    const report = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
-    if (report.length === 0) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 });
-    }
-
-    const existingRows = await db
-      .select()
+    const [existing] = await db
+      .select({ id: endorsements.id })
       .from(endorsements)
-      .where(and(eq(endorsements.reportId, id), eq(endorsements.expertUserId, user.id)));
+      .where(and(eq(endorsements.reportId, id), eq(endorsements.expertUserId, user.id)))
+      .limit(1);
 
-    if (existingRows.length > 0) {
+    if (existing) {
       await db
         .update(endorsements)
-        .set({ severityLevel, note: note || null, createdAt: new Date() })
-        .where(eq(endorsements.id, existingRows[0].id));
-      return NextResponse.json({ success: true, updated: true });
+        .set({ severityLevel, note, updatedAt: new Date() })
+        .where(eq(endorsements.id, existing.id));
+      return NextResponse.json({ success: true, updated: true, id: existing.id });
     }
 
     const endorsementId = crypto.randomUUID();
@@ -83,40 +109,53 @@ export async function POST(
       reportId: id,
       expertUserId: user.id,
       severityLevel,
-      note: note || null,
+      note,
       createdAt: new Date(),
     });
 
+    if (report.submitterId !== user.id) {
+      await createNotification({
+        recipientId: report.submitterId,
+        actorId: user.id,
+        type: 'endorsement',
+        reportId: id,
+        metadata: { severityLevel },
+      });
+      runAfterResponse('endorsement-email', async () => {
+        const recipient = await emailRecipient(report.submitterId);
+        if (!recipient) return;
+        await sendEndorsementNotification({
+          to: recipient.email,
+          reportTitle: report.title,
+          reportId: id,
+          expertName: user.displayName || 'An expert',
+          severityLevel,
+          unsubscribeUrl: unsubscribeUrlFor(report.submitterId),
+        });
+      });
+    }
+
     return NextResponse.json({ success: true, id: endorsementId }, { status: 201 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to create endorsement';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'endorsements POST');
   }
 }
 
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const userCheck = await requireExpert();
     if (isAuthError(userCheck)) return userCheck;
-    const user = userCheck;
 
     const { id } = await params;
-
     await db
       .delete(endorsements)
-      .where(
-        and(
-          eq(endorsements.reportId, id),
-          eq(endorsements.expertUserId, user.id)
-        )
-      );
+      .where(and(eq(endorsements.reportId, id), eq(endorsements.expertUserId, userCheck.id)));
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to delete endorsement';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'endorsements DELETE');
   }
 }

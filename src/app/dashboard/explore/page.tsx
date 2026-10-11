@@ -26,8 +26,9 @@ function ExploreContent() {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  // radiusKm needs a centre point; the map sends its own bounds instead.
   const queryString = new URLSearchParams(
-    Object.entries(filters).filter(([, v]) => v)
+    Object.entries(filters).filter(([k, v]) => v && k !== 'radiusKm')
   ).toString();
 
   return (

@@ -746,7 +746,17 @@ export async function getReporterStats(filters: AnalyticsFilters): Promise<Repor
   const userIds = Array.from(byUser.keys());
   if (userIds.length === 0) return [];
 
-  const userRows = await db.select().from(users).where(inArray(users.id, userIds));
+  const userRows = await db
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      email: users.email,
+      role: users.role,
+      isSynthetic: users.isSynthetic,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(inArray(users.id, userIds));
   const flagRows = await db
     .select({ reporterId: flags.reporterId, count: sql<number>`cast(count(*) as int)` })
     .from(flags)
@@ -887,7 +897,25 @@ export async function getDataQuality(filters: AnalyticsFilters): Promise<DataQua
   return issues;
 }
 
-export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports>>['rows']) {
+/**
+ * Spreadsheet apps execute cells starting with = + - @ (or tab/CR) as
+ * formulas. Prefix user-controlled text so it is shown, not run.
+ */
+export function neutralizeCsvCell(value: unknown): string {
+  if (value == null) return '';
+  const s = String(value);
+  return typeof value === 'string' && /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
+type AnalyticsReportRow = Awaited<ReturnType<typeof getAnalyticsReports>>['rows'][number];
+export type PublicAnalyticsReportRow = Omit<AnalyticsReportRow, 'submitterId' | 'userEmail' | 'userRole' | 'userIsSynthetic'>;
+
+/** Rows safe for anonymous share links: no reporter ids, emails, roles or account flags. */
+export function toPublicReportRows(rows: AnalyticsReportRow[]): PublicAnalyticsReportRow[] {
+  return rows.map(({ submitterId: _s, userEmail: _e, userRole: _r, userIsSynthetic: _y, ...rest }) => rest);
+}
+
+export function reportsToCsv(rows: PublicAnalyticsReportRow[]) {
   const headers = [
     'id',
     'title',
@@ -939,10 +967,7 @@ export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports
       r.createdAt,
       r.occurredAt,
       r.resolvedAt,
-    ].map((v) => {
-      const s = v == null ? '' : String(v);
-      return `"${s.replace(/"/g, '""')}"`;
-    });
+    ].map((v) => `"${neutralizeCsvCell(v).replace(/"/g, '""')}"`);
     lines.push(vals.join(','));
   }
   // UTF-8 BOM so Excel on Windows opens special characters correctly

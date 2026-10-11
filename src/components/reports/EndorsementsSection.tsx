@@ -29,7 +29,7 @@ export function EndorsementsSection({ reportId, isExpert }: EndorsementsSectionP
     fetch(`/api/reports/${reportId}/endorsements`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setEndorsements(data);
+        if (Array.isArray(data?.items)) setEndorsements(data.items);
       })
       .finally(() => setLoading(false));
   };

@@ -1,41 +1,51 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { comments, reports, users, notifications } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { comments, reports, users } from '@/db/schema';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getSessionUser } from '@/lib/auth';
 import { containsBlockedContent } from '@/lib/content-filter';
 import { sendCommentNotification } from '@/lib/email';
+import { clientIp, notFound, parseJsonBody, serverError } from '@/lib/http';
+import { createNotification, emailRecipient, runAfterResponse } from '@/lib/notify';
+import { enforceRateLimit } from '@/lib/rate-limit';
+import { unsubscribeUrlFor } from '@/lib/unsubscribe';
+import { commentSchema } from '@/lib/validation';
+
+async function visibleReport(id: string) {
+  const [report] = await db
+    .select({ id: reports.id, title: reports.title, submitterId: reports.submitterId })
+    .from(reports)
+    .where(and(eq(reports.id, id), eq(reports.isHidden, false)))
+    .limit(1);
+  return report ?? null;
+}
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    if (!(await visibleReport(id))) return notFound('Report not found');
+
+    // Moderated comments and comments by disabled accounts are not public.
     const rows = await db
       .select({
         id: comments.id,
         body: comments.body,
         createdAt: comments.createdAt,
+        userId: comments.userId,
         userDisplayName: users.displayName,
-        userEmail: users.email,
       })
       .from(comments)
-      .leftJoin(users, eq(comments.userId, users.id))
-      .where(eq(comments.reportId, id))
+      .innerJoin(users, eq(comments.userId, users.id))
+      .where(and(eq(comments.reportId, id), eq(comments.isHidden, false), isNull(users.disabledAt)))
       .orderBy(desc(comments.createdAt));
 
-    return NextResponse.json(
-      rows.map((r) => ({
-        ...r,
-        userEmail: null,
-        createdAt: r.createdAt.toISOString(),
-      }))
-    );
+    return NextResponse.json(rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch comments';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'comments GET');
   }
 }
 
@@ -49,86 +59,60 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
-    const body = await request.json();
-    const { body: commentBody } = body;
+    const limited = await enforceRateLimit('comment', `${user.id}:${clientIp(request)}`);
+    if (limited) return limited;
 
-    if (!commentBody || !commentBody.trim()) {
-      return NextResponse.json({ error: 'Comment cannot be empty' }, { status: 400 });
-    }
+    const parsed = await parseJsonBody(request, commentSchema);
+    if (!parsed.ok) return parsed.response;
+    const commentBody = parsed.data.body;
 
     const blocked = containsBlockedContent(commentBody);
     if (blocked) {
       return NextResponse.json({ error: blocked }, { status: 400 });
     }
 
-    const reportRows = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
-    const report = reportRows[0];
-    if (!report || report.isHidden) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 });
-    }
+    const { id } = await params;
+    const report = await visibleReport(id);
+    if (!report) return notFound('Report not found');
 
-    const commentId = crypto.randomUUID();
     const [newComment] = await db
       .insert(comments)
       .values({
-        id: commentId,
+        id: crypto.randomUUID(),
         reportId: id,
         userId: user.id,
-        body: commentBody.trim(),
+        body: commentBody,
         createdAt: new Date(),
       })
       .returning();
 
-    // ✅ NEW: In-app notification (non-blocking)
     if (report.submitterId !== user.id) {
-      try {
-        await db.insert(notifications).values({
-          id: crypto.randomUUID(),
-          userId: report.submitterId,
-          type: 'comment',
-          actorId: user.id,
+      await createNotification({ recipientId: report.submitterId, actorId: user.id, type: 'comment', reportId: id });
+      runAfterResponse('comment-email', async () => {
+        const recipient = await emailRecipient(report.submitterId);
+        if (!recipient) return;
+        await sendCommentNotification({
+          to: recipient.email,
+          reportTitle: report.title,
           reportId: id,
-          read: false,
-          createdAt: new Date(),
+          commenterName: user.displayName || 'Someone',
+          commentBody: commentBody.slice(0, 200),
+          unsubscribeUrl: unsubscribeUrlFor(report.submitterId),
         });
-      } catch (notifError) {
-        console.error('Failed to create notification:', notifError);
-      }
-
-      // Email notification (W2-5)
-      try {
-        const submitter = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, report.submitterId))
-          .limit(1);
-
-        if (submitter[0]?.email && submitter[0]?.emailNotifications !== false) {
-          await sendCommentNotification({
-            to: submitter[0].email,
-            reportTitle: report.title,
-            reportId: id,
-            commenterName: user.displayName || 'Someone',
-            commentBody: commentBody.slice(0, 200),
-          });
-        }
-      } catch (emailError) {
-        console.error('Failed to send comment email:', emailError);
-      }
+      });
     }
 
     return NextResponse.json(
       {
-        ...newComment,
+        id: newComment.id,
+        body: newComment.body,
+        userId: user.id,
         userDisplayName: user.displayName,
-        userEmail: null,
         createdAt: newComment.createdAt.toISOString(),
       },
       { status: 201 }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to post comment';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'comments POST');
   }
 }

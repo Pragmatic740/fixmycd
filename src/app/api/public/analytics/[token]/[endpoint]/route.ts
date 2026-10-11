@@ -13,10 +13,24 @@ import {
   getAnalyticsReports,
   reportsToCsv,
   sanitizeAnalyticsFilters,
+  toPublicReportRows,
 } from '@/lib/analytics';
+import { serverError } from '@/lib/http';
 import { resolveShareToken } from '@/lib/analytics-share';
 import { hashUserAgent, extractReferrer } from '@/lib/hashing';
 import type { AnalyticsFilters } from '@/lib/analytics-types';
+
+/** Anonymous viewers can export at most this many rows per CSV. */
+const PUBLIC_CSV_LIMIT = 1000;
+
+/** Filters shown to anonymous viewers: never who reported what. */
+function publicFilters(filters: AnalyticsFilters): Partial<AnalyticsFilters> {
+  const { reporterId: _id, reporterName: _name, ...rest } = filters as AnalyticsFilters & {
+    reporterId?: unknown;
+    reporterName?: unknown;
+  };
+  return rest;
+}
 
 function optionalParamNumber(searchParams: URLSearchParams, key: string): number | undefined {
   const v = searchParams.get(key);
@@ -110,8 +124,8 @@ export async function GET(
         });
       case 'reports': {
         if (searchParams.get('format') === 'csv') {
-          const result = await getAnalyticsReports({ ...filters, limit: 5000, offset: 0 });
-          const csv = reportsToCsv(result.rows);
+          const result = await getAnalyticsReports({ ...filters, limit: PUBLIC_CSV_LIMIT, offset: 0 });
+          const csv = reportsToCsv(toPublicReportRows(result.rows));
           return new NextResponse(csv, {
             headers: {
               'Content-Type': 'text/csv; charset=utf-8',
@@ -119,16 +133,15 @@ export async function GET(
             },
           });
         }
-        return NextResponse.json({ data: await getAnalyticsReports(filters), meta });
+        const result = await getAnalyticsReports(filters);
+        return NextResponse.json({ data: { ...result, rows: toPublicReportRows(result.rows) }, meta });
       }
       case 'meta':
-        return NextResponse.json({ data: { label: share.label, filters: share.filters }, meta });
+        return NextResponse.json({ data: { label: share.label, filters: publicFilters(share.filters) }, meta });
       default:
         return NextResponse.json({ error: `Unknown endpoint: ${endpoint}` }, { status: 404 });
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Shared analytics failed';
-    console.error('Public analytics error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'public analytics');
   }
 }

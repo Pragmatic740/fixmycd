@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import type { ReportListItem } from '../lib/types';
+import { handleFor } from '../lib/utils';
 import ShareSheet from './ShareSheet';
 
 const UpvoteIcon = ({ filled }: { filled?: boolean }) => (
@@ -107,7 +108,7 @@ export default function ReportCard({
             <Link href={`/dashboard/u/${report.submitterId}`} className="display-name" onClick={(e) => e.stopPropagation()}>
               {report.userDisplayName || 'Anonymous'}
             </Link>
-            <span className="handle">@{report.userEmail ? report.userEmail.split('@')[0] : 'citizen'}</span>
+            <span className="handle">@{handleFor(report.userDisplayName)}</span>
             <span className="dot-sep">·</span>
             <time className="report-timestamp" dateTime={report.createdAt}>
               {relativeTime(report.createdAt)}
