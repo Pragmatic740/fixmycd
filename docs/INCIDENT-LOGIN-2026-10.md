@@ -40,10 +40,46 @@ That message never appeared on screen. PR #11 also upgraded `drizzle-orm` from 0
 `error.message` to the browser, which is why the screen showed raw SQL and the user's
 email.
 
-The same missing schema also affects (at least) the admin users list, signup approvals,
-endorsements (`endorsements` table), share-view tracking (`share_view_events` table), the
-beta subscribe API (`beta_subscribers`), and anything else that selects all `users`
-columns.
+Production runtime logs (deployment `dpl_7YfUpGaASuJatJ2ostyUeLmzCb13`, 11 Oct) confirm it:
+`POST /api/auth/login` → 500 with
+`[cause]: column "status" does not exist` (Postgres `42703`, `errorMissingColumn`).
+
+### Impact beyond login
+
+Login is only the most visible failure. Two things widen it:
+
+- `getSessionUser()` (`src/lib/auth.ts`) does `db.select().from(users)`, so **every
+  request that carries a session cookie** fails. Logged-in users would see the feed,
+  notifications, upvotes, comments posting, review and admin all return 500.
+- `endorsements`, `share_view_events` and `beta_subscribers` tables don't exist yet.
+
+Measured locally against a database built with the 24 July migration, running the
+current `main` code:
+
+| Endpoint | Logged out | Logged in | After migration |
+|---|---|---|---|
+| `GET /api/reports` (feed) | 200 | **500** | 200 |
+| `GET /api/reports/[id]`, `/comments` | 200 | – | 200 |
+| `GET /api/reports/[id]/endorsements` | **500** | – | 200 |
+| `GET /api/reports/[id]/pdf` (PDF export) | **500** | – | 200 |
+| `GET /api/users/[id]` (public profile `/dashboard/u/…`) | **500** | – | 200 |
+| `POST /api/auth/login` | **500** | – | 200 |
+| `POST /api/auth/signup` | **500** | – | 201 |
+| `POST /api/beta-subscribe` | **500** | – | 201 |
+| `GET /api/auth/me` | 401 | **500** | 200 |
+| `GET /api/notifications` | – | **500** | 200 |
+| `POST /api/reports/[id]/upvote` | – | **500** | 200 |
+| `GET /api/admin/users`, `/api/admin/analytics/shares` | – | **500** | 200 |
+
+Because no one can log in, and session cookies expire after 7 days (the broken deploy
+went out 3 Oct), the live site is effectively **read-only for everyone**. Guests can
+browse the feed and reports, but nobody can log in, sign up, post, comment, upvote,
+moderate or administer. Public profiles, endorsements and PDF export are broken even for
+guests. Shared analytics links (`/v/[token]`) still load. Their view-tracking insert
+fails but is caught and only logged.
+
+**No data was lost or corrupted.** Every failing query fails before writing, and the
+migration only adds columns and tables. Existing users get `status = 'approved'`.
 
 ### Reproduction (done locally)
 
