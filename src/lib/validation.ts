@@ -29,3 +29,21 @@ export const loginSchema = z.object({
 });
 
 export const betaSubscribeSchema = z.object({ email: emailField });
+
+export const USER_ROLES = ['viewer', 'submitter', 'referee', 'admin', 'super_admin'] as const;
+export const USER_STATUSES = ['pending', 'approved', 'rejected'] as const;
+
+export const adminUserPatchSchema = z
+  .object({
+    userId: z.string().min(1).max(100),
+    disabled: z.boolean().optional(),
+    role: z.enum(USER_ROLES).optional(),
+    status: z.enum(USER_STATUSES).optional(),
+  })
+  .refine((b) => b.disabled !== undefined || b.role !== undefined || b.status !== undefined, {
+    message: 'Nothing to change',
+  });
+
+export const adminUserListQuery = z.object({
+  status: z.enum(USER_STATUSES).optional(),
+});

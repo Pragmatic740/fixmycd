@@ -1,60 +1,50 @@
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { users } from '@/db/schema';
+import { adminAuditLog, users } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
-import { isAuthError, isSuperAdmin, requireAdmin } from '@/lib/auth';
+import { isAdmin, isAuthError, isSuperAdmin, requireAdmin, revokeUserSessions } from '@/lib/auth';
+import { notFound, parseJsonBody, parseQuery, serverError } from '@/lib/http';
+import { adminUserListQuery, adminUserPatchSchema } from '@/lib/validation';
 
-const ASSIGNABLE_BY_ADMIN = ['submitter', 'viewer', 'referee', 'admin'] as const;
-const ASSIGNABLE_BY_SUPER = [...ASSIGNABLE_BY_ADMIN, 'super_admin'] as const;
-const VALID_STATUSES = ['pending', 'approved', 'rejected'] as const;
+const ASSIGNABLE_BY_ADMIN = ['submitter', 'viewer', 'referee', 'admin'];
+
+const userListColumns = {
+  id: users.id,
+  email: users.email,
+  displayName: users.displayName,
+  role: users.role,
+  status: users.status,
+  disabledAt: users.disabledAt,
+  isSynthetic: users.isSynthetic,
+  createdAt: users.createdAt,
+};
+
+type UserListRow = { createdAt: Date; disabledAt: Date | null } & Record<string, unknown>;
+const serialize = (u: UserListRow) => ({
+  ...u,
+  createdAt: u.createdAt.toISOString(),
+  disabledAt: u.disabledAt?.toISOString() ?? null,
+});
+
+const forbidden = (error: string) => NextResponse.json({ error }, { status: 403 });
 
 export async function GET(request: Request) {
   try {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const { searchParams } = new URL(request.url);
-    const statusFilter = searchParams.get('status');
+    const query = parseQuery(new URL(request.url).searchParams, adminUserListQuery);
+    if (!query.ok) return query.response;
 
-    const allUsers = statusFilter
-      ? await db
-          .select({
-            id: users.id,
-            email: users.email,
-            displayName: users.displayName,
-            role: users.role,
-            status: users.status,
-            disabledAt: users.disabledAt,
-            isSynthetic: users.isSynthetic,
-            createdAt: users.createdAt,
-          })
-          .from(users)
-          .where(eq(users.status, statusFilter))
-          .orderBy(desc(users.createdAt))
-      : await db
-          .select({
-            id: users.id,
-            email: users.email,
-            displayName: users.displayName,
-            role: users.role,
-            status: users.status,
-            disabledAt: users.disabledAt,
-            isSynthetic: users.isSynthetic,
-            createdAt: users.createdAt,
-          })
-          .from(users)
-          .orderBy(desc(users.createdAt));
-
-    return NextResponse.json(
-      allUsers.map((u) => ({
-        ...u,
-        createdAt: u.createdAt.toISOString(),
-        disabledAt: u.disabledAt?.toISOString() ?? null,
-      }))
+    const base = db.select(userListColumns).from(users);
+    const rows = await (query.data.status ? base.where(eq(users.status, query.data.status)) : base).orderBy(
+      desc(users.createdAt)
     );
+
+    return NextResponse.json(rows.map(serialize));
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch users';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/users GET');
   }
 }
 
@@ -63,46 +53,61 @@ export async function PATCH(request: Request) {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const body = await request.json();
-    const { userId, disabled, role, status } = body as {
-      userId?: string;
-      disabled?: boolean;
-      role?: string;
-      status?: string;
-    };
+    const parsed = await parseJsonBody(request, adminUserPatchSchema);
+    if (!parsed.ok) return parsed.response;
+    const { userId, disabled, role, status } = parsed.data;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    if (userId === admin.id) {
+      return forbidden('You cannot change your own account here');
+    }
+
+    const [target] = await db
+      .select({ id: users.id, role: users.role, status: users.status, disabledAt: users.disabledAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!target) return notFound('User not found');
+
+    // Admins manage regular accounts; only a super_admin manages other admins.
+    if (isAdmin(target.role) && !isSuperAdmin(admin.role)) {
+      return forbidden('Only a super_admin can change admin accounts');
     }
 
     const patch: { disabledAt?: Date | null; role?: string; status?: string } = {};
-    if (typeof disabled === 'boolean') {
-      patch.disabledAt = disabled ? new Date() : null;
+    if (disabled !== undefined) {
+      patch.disabledAt = disabled ? (target.disabledAt ?? new Date()) : null;
     }
-    if (role != null) {
-      const allowed = isSuperAdmin(admin.role) ? ASSIGNABLE_BY_SUPER : ASSIGNABLE_BY_ADMIN;
-      if (!allowed.includes(role as (typeof ASSIGNABLE_BY_ADMIN)[number])) {
-        return NextResponse.json({ error: 'Cannot assign that role' }, { status: 403 });
-      }
-      if (role === 'super_admin' && !isSuperAdmin(admin.role)) {
-        return NextResponse.json(
-          { error: 'Only super_admin can promote to super_admin' },
-          { status: 403 }
-        );
+    if (role !== undefined) {
+      if (!isSuperAdmin(admin.role) && !ASSIGNABLE_BY_ADMIN.includes(role)) {
+        return forbidden('Only a super_admin can grant that role');
       }
       patch.role = role;
     }
-    if (status != null) {
-      if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
-        return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
-      }
-      patch.status = status;
+    if (status !== undefined) patch.status = status;
+
+    const [updated] = await db.update(users).set(patch).where(eq(users.id, userId)).returning(userListColumns);
+
+    const roleChanged = role !== undefined && role !== target.role;
+    const lostAccess = disabled === true || (status !== undefined && status !== 'approved');
+    if (roleChanged || lostAccess) {
+      await revokeUserSessions(userId);
     }
 
-    const updated = await db.update(users).set(patch).where(eq(users.id, userId)).returning();
-    return NextResponse.json(updated[0]);
+    await db.insert(adminAuditLog).values({
+      id: crypto.randomUUID(),
+      actorId: admin.id,
+      action: 'user.update',
+      targetType: 'user',
+      targetId: userId,
+      detailsJson: JSON.stringify({
+        before: { role: target.role, status: target.status, disabled: target.disabledAt !== null },
+        changes: { disabled, role, status },
+      }),
+      createdAt: new Date(),
+    });
+
+    return NextResponse.json(serialize(updated));
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update user';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/users PATCH');
   }
 }
