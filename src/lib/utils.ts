@@ -16,3 +16,12 @@ export function formatRelativeTime(date: Date | string): string {
 
   return past.toLocaleDateString();
 }
+
+/** Public @handle derived from a display name (emails are never shown to other users). */
+export function handleFor(displayName: string | null | undefined): string {
+  const slug = (displayName ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '');
+  return slug.slice(0, 24) || 'citizen';
+}

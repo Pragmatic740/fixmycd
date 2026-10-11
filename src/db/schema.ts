@@ -224,6 +224,8 @@ export const notifications = pgTable('notifications', {
   actorId: text('actor_id').references(() => users.id),
   reportId: text('report_id').references(() => reports.id),
   read: boolean('read').notNull().default(false),
+  // Extra context, e.g. {"from":"submitted","to":"accepted"} for status changes.
+  metadataJson: text('metadata_json'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -287,6 +289,7 @@ export const endorsements = pgTable('endorsements', {
   severityLevel: integer('severity_level').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
 }, (table) => ({
   reportIdx: index('endorsements_report_idx').on(table.reportId),
   expertIdx: index('endorsements_expert_idx').on(table.expertUserId),

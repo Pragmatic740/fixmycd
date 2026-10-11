@@ -72,3 +72,24 @@ export function clientIp(request: Request): string {
   if (forwarded) return forwarded.split(',')[0].trim() || 'unknown';
   return request.headers.get('x-real-ip')?.trim() || 'unknown';
 }
+
+/** Postgres unique_violation (23505), whether thrown directly or wrapped by Drizzle. */
+export function isUniqueViolation(error: unknown): boolean {
+  const code = (e: unknown) => (e && typeof e === 'object' && 'code' in e ? (e as { code?: unknown }).code : undefined);
+  return code(error) === '23505' || (error instanceof Error && code(error.cause) === '23505');
+}
+
+/** Read a JSON object body without schema validation (400 when it is not an object). */
+export async function readJsonObject(
+  request: Request
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; response: NextResponse }> {
+  try {
+    const data: unknown = await request.json();
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      return { ok: true, data: data as Record<string, unknown> };
+    }
+  } catch {
+    // fall through
+  }
+  return { ok: false, response: badRequest('Request body must be a JSON object') };
+}

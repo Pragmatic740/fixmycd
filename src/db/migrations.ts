@@ -404,6 +404,9 @@ export async function runMigrations(client: postgres.Sql): Promise<void> {
     await sql`CREATE INDEX IF NOT EXISTS "sessions_user_idx" ON "sessions" ("user_id");`;
     await sql`CREATE INDEX IF NOT EXISTS "sessions_expires_idx" ON "sessions" ("expires_at");`;
 
+    await sql`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "metadata_json" text;`;
+    await sql`ALTER TABLE "endorsements" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone;`;
+
     // Rate limiting counters
     await sql`
       CREATE TABLE IF NOT EXISTS "rate_limits" (
