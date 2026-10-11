@@ -2256,3 +2256,15 @@ button {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+/* Shared link status badge */
+.share-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.share-badge-expired {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}

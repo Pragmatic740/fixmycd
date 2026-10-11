@@ -406,6 +406,8 @@ export async function runMigrations(client: postgres.Sql): Promise<void> {
 
     await sql`ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "metadata_json" text;`;
     await sql`ALTER TABLE "endorsements" ADD COLUMN IF NOT EXISTS "updated_at" timestamp with time zone;`;
+    await sql`ALTER TABLE "share_view_events" ADD COLUMN IF NOT EXISTS "visitor_hash" text;`;
+    await sql`CREATE INDEX IF NOT EXISTS "share_view_visitor_idx" ON "share_view_events" ("token_id", "visitor_hash", "viewed_at");`;
 
     // Rate limiting counters
     await sql`

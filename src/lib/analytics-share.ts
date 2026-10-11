@@ -6,6 +6,7 @@ import { sanitizeAnalyticsFilters } from './analytics';
 
 export async function resolveShareToken(token: string): Promise<{
   id: string;
+  createdBy: string;
   label: string | null;
   filters: AnalyticsFilters;
 } | null> {
@@ -25,6 +26,7 @@ export async function resolveShareToken(token: string): Promise<{
   if (!row) return null;
   return {
     id: row.id,
+    createdBy: row.createdBy,
     label: row.label,
     filters: sanitizeAnalyticsFilters(JSON.parse(row.filtersJson)),
   };

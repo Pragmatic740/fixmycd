@@ -42,7 +42,7 @@ export async function GET() {
         tokenId: shareViewEvents.tokenId,
         count: sql<number>`cast(count(*) as int)`,
         lastViewed: sql<Date | string | null>`max(${shareViewEvents.viewedAt})`,
-        recent: sql<number>`cast(count(*) filter (where ${shareViewEvents.viewedAt} >= ${since}) as int)`,
+        recent: sql<number>`cast(count(*) filter (where ${shareViewEvents.viewedAt} >= ${since.toISOString()}::timestamptz) as int)`,
       })
       .from(shareViewEvents)
       .where(inArray(shareViewEvents.tokenId, tokenIds))

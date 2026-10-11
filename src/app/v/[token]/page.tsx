@@ -39,6 +39,16 @@ function renderPieLabel(props: { label?: string; count?: number }): string {
   return `${props.label ?? ''} (${props.count ?? 0})`;
 }
 
+/** Pass on where the viewer came from (hostname only) for share-link view stats. */
+function referrerQuery(): string {
+  try {
+    const host = document.referrer ? new URL(document.referrer).hostname : '';
+    return host && host !== window.location.hostname ? `?ref=${encodeURIComponent(host)}` : '';
+  } catch {
+    return '';
+  }
+}
+
 export default function SharedAnalyticsViewerPage() {
   const params = useParams();
   const token = params.token as string;
@@ -65,7 +75,7 @@ export default function SharedAnalyticsViewerPage() {
 
     Promise.all([
       fetch(`/api/public/analytics/${token}/meta`).then((r) => r.json()),
-      fetch(`/api/public/analytics/${token}/summary`).then((r) => r.json()),
+      fetch(`/api/public/analytics/${token}/summary${referrerQuery()}`).then((r) => r.json()),
       fetch(`/api/public/analytics/${token}/timeseries?bucket=month`).then((r) => r.json()),
       fetch(`/api/public/analytics/${token}/breakdowns?groupBy=infrastructureClass`).then((r) => r.json()),
       fetch(`/api/public/analytics/${token}/breakdowns?groupBy=status`).then((r) => r.json()),

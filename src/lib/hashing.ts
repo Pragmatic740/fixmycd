@@ -33,14 +33,22 @@ export function hashUserAgent(userAgent: string | null): string | null {
 }
 
 /**
- * Reduce a referrer URL to just its hostname to avoid capturing full URLs.
+ * Anonymous visitor key for view counting: salted hash of IP + user agent +
+ * UTC day. Nothing reversible is stored, and the key changes every day so
+ * visitors cannot be tracked across days.
  */
-export function extractReferrer(referrer: string | null): string | null {
-  if (!referrer) return null;
-  try {
-    const url = new URL(referrer);
-    return url.hostname;
-  } catch {
-    return null;
-  }
+export function visitorHash(ip: string, userAgent: string | null, now = new Date()): string {
+  const day = now.toISOString().slice(0, 10);
+  return crypto
+    .createHash('sha256')
+    .update(`${ip}|${userAgent ?? ''}|${day}|${hashSalt()}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|embedly|whatsapp|telegram|discord|slack|curl|wget|python-requests|headless/i;
+
+/** Link-preview bots and crawlers shouldn't count as dashboard views. */
+export function isLikelyBot(userAgent: string | null): boolean {
+  return !!userAgent && BOT_UA.test(userAgent);
 }

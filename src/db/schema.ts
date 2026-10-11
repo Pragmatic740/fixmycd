@@ -304,8 +304,11 @@ export const shareViewEvents = pgTable('share_view_events', {
   viewedAt: timestamp('viewed_at', { withTimezone: true }).notNull().defaultNow(),
   referrer: text('referrer'),
   userAgentHash: text('user_agent_hash'),
+  // Daily-rotating anonymous visitor key used to de-duplicate views.
+  visitorHash: text('visitor_hash'),
 }, (table) => ({
   tokenIdx: index('share_view_token_idx').on(table.tokenId),
+  visitorIdx: index('share_view_visitor_idx').on(table.tokenId, table.visitorHash, table.viewedAt),
   viewedAtIdx: index('share_view_viewed_at_idx').on(table.viewedAt),
 }));
 
