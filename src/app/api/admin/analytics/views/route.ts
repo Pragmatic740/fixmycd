@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { analyticsSavedViews } from '@/db/schema';
 import { isAuthError, requireAdmin } from '@/lib/auth';
 import { filtersForPersist } from '@/lib/analytics';
+import { isUniqueViolation, readJsonObject, serverError } from '@/lib/http';
 
 function normalizeDescription(raw: unknown): string | null {
   if (raw == null) return null;
@@ -34,8 +35,7 @@ export async function GET() {
       }))
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to list views';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/views');
   }
 }
 
@@ -44,8 +44,10 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const body = await request.json();
-    const name = String(body.name || '').trim();
+    const parsedBody = await readJsonObject(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.data;
+    const name = String(body.name || '').trim().slice(0, 120);
     const description = normalizeDescription(body.description);
     const overwrite = Boolean(body.overwrite);
     if (!name || !body.filters || typeof body.filters !== 'object') {
@@ -96,8 +98,7 @@ export async function POST(request: Request) {
         updatedAt: now,
       });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to save view';
-      if (String(message).includes('unique') || String(message).includes('duplicate')) {
+      if (isUniqueViolation(error)) {
         return NextResponse.json({ error: 'A dashboard with that name already exists' }, { status: 409 });
       }
       throw error;
@@ -115,8 +116,7 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to save view';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/views');
   }
 }
 
@@ -125,7 +125,9 @@ export async function PATCH(request: Request) {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const body = await request.json();
+    const parsedBody = await readJsonObject(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.data;
     const id = String(body.id || '');
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
@@ -156,8 +158,7 @@ export async function PATCH(request: Request) {
       updatedAt: updated[0].updatedAt.toISOString(),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update view';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/views');
   }
 }
 
@@ -178,7 +179,6 @@ export async function DELETE(request: Request) {
     if (!deleted[0]) return NextResponse.json({ error: 'View not found' }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to delete view';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/views');
   }
 }

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geocodeCoordinates } from '@/lib/geo/census';
+import { clientIp, serverError } from '@/lib/http';
+import { enforceRateLimit } from '@/lib/rate-limit';
 
 export async function GET(request: NextRequest) {
   try {
+    const limited = await enforceRateLimit('geocode', clientIp(request));
+    if (limited) return limited;
+
     const searchParams = request.nextUrl.searchParams;
     const lat = searchParams.get('lat');
     const lng = searchParams.get('lng');
@@ -17,7 +22,12 @@ export async function GET(request: NextRequest) {
     const parsedLat = parseFloat(lat);
     const parsedLng = parseFloat(lng);
 
-    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+    if (
+      !Number.isFinite(parsedLat) ||
+      !Number.isFinite(parsedLng) ||
+      Math.abs(parsedLat) > 90 ||
+      Math.abs(parsedLng) > 180
+    ) {
       return NextResponse.json(
         { error: 'Invalid lat or lng values' },
         { status: 400 }
@@ -42,10 +52,6 @@ export async function GET(request: NextRequest) {
       lng: parsedLng,
     });
   } catch (error) {
-    console.error('Geocode API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return serverError(error, 'geocode');
   }
 }

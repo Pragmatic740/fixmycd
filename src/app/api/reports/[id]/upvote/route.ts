@@ -1,112 +1,98 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { upvotes, reports, users, notifications } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { notifications, reports, upvotes } from '@/db/schema';
+import { and, eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getSessionUser } from '@/lib/auth';
 import { sendUpvoteNotification } from '@/lib/email';
+import { notFound, serverError } from '@/lib/http';
+import { createNotification, emailRecipient, runAfterResponse } from '@/lib/notify';
+import { unsubscribeUrlFor } from '@/lib/unsubscribe';
+
+const unauthorized = () => NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+async function upvoteCount(reportId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`cast(count(*) as int)` })
+    .from(upvotes)
+    .where(eq(upvotes.reportId, reportId));
+  return row?.count ?? 0;
+}
 
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return unauthorized();
 
     const { id } = await params;
-
-    const existing = await db
-      .select()
-      .from(upvotes)
-      .where(and(eq(upvotes.userId, user.id), eq(upvotes.reportId, id)))
+    const [report] = await db
+      .select({ id: reports.id, title: reports.title, submitterId: reports.submitterId })
+      .from(reports)
+      .where(and(eq(reports.id, id), eq(reports.isHidden, false)))
       .limit(1);
+    if (!report) return notFound('Report not found');
 
-    if (existing.length > 0) {
-      return NextResponse.json({ error: 'Already upvoted' }, { status: 400 });
-    }
+    // Idempotent: a second upvote is a no-op (unique index on user+report).
+    const inserted = await db
+      .insert(upvotes)
+      .values({ id: crypto.randomUUID(), userId: user.id, reportId: id, createdAt: new Date() })
+      .onConflictDoNothing()
+      .returning({ id: upvotes.id });
 
-    await db.insert(upvotes).values({
-      id: crypto.randomUUID(),
-      userId: user.id,
-      reportId: id,
-      createdAt: new Date(),
-    });
+    const count = await upvoteCount(id);
 
-    // ✅ NEW: In-app + email notification
-    try {
-      const reportRows = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
-      const report = reportRows[0];
-
-      if (report && report.submitterId !== user.id) {
-        // In-app notification
-        try {
-          await db.insert(notifications).values({
-            id: crypto.randomUUID(),
-            userId: report.submitterId,
-            type: 'upvote',
-            actorId: user.id,
-            reportId: id,
-            read: false,
-            createdAt: new Date(),
-          });
-        } catch (notifError) {
-          console.error('Failed to create notification:', notifError);
-        }
-
-        // Email notification
-        const submitter = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, report.submitterId))
-          .limit(1);
-
-        if (submitter[0]?.email && submitter[0]?.emailNotifications !== false) {
-          const countResult = await db
-            .select({ count: sql<number>`count(*)` })
-            .from(upvotes)
-            .where(eq(upvotes.reportId, id));
-
+    if (inserted.length > 0 && report.submitterId !== user.id) {
+      // Notify once per person per report, even if they toggle the upvote.
+      const [already] = await db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.userId, report.submitterId),
+            eq(notifications.actorId, user.id),
+            eq(notifications.reportId, id),
+            eq(notifications.type, 'upvote')
+          )
+        )
+        .limit(1);
+      if (!already) {
+        await createNotification({ recipientId: report.submitterId, actorId: user.id, type: 'upvote', reportId: id });
+        runAfterResponse('upvote-email', async () => {
+          const recipient = await emailRecipient(report.submitterId);
+          if (!recipient) return;
           await sendUpvoteNotification({
-            to: submitter[0].email,
+            to: recipient.email,
             reportTitle: report.title,
             reportId: id,
-            upvoteCount: Number(countResult[0]?.count || 0),
+            upvoteCount: count,
+            unsubscribeUrl: unsubscribeUrlFor(report.submitterId),
           });
-        }
+        });
       }
-    } catch (emailError) {
-      console.error('Failed to send upvote notification:', emailError);
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ upvoted: true, upvoteCount: count });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to upvote';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'upvote POST');
   }
 }
 
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return unauthorized();
 
     const { id } = await params;
+    await db.delete(upvotes).where(and(eq(upvotes.userId, user.id), eq(upvotes.reportId, id)));
 
-    await db
-      .delete(upvotes)
-      .where(and(eq(upvotes.userId, user.id), eq(upvotes.reportId, id)));
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ upvoted: false, upvoteCount: await upvoteCount(id) });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to remove upvote';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'upvote DELETE');
   }
 }

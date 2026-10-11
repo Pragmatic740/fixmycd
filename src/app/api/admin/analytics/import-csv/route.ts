@@ -4,6 +4,10 @@ import { db } from '@/db';
 import { reports, reportLocations } from '@/db/schema';
 import { isAuthError, requireAdmin } from '@/lib/auth';
 import { CSV_TEMPLATE, mapCsvRow, parseCsv } from '@/lib/csv-import';
+import { readJsonObject, serverError } from '@/lib/http';
+
+const MAX_CSV_BYTES = 5 * 1024 * 1024;
+const MAX_CSV_ROWS = 10_000;
 
 const BATCH = 40;
 
@@ -36,13 +40,25 @@ export async function POST(request: Request) {
       datasetKey = String(form.get('datasetKey') || datasetKey).trim() || datasetKey;
       useStockPhotos = String(form.get('useStockPhotos') || 'true') !== 'false';
     } else {
-      const body = await request.json();
+      const parsedBody = await readJsonObject(request);
+      if (!parsedBody.ok) return parsedBody.response;
+      const body = parsedBody.data;
       text = String(body.csv || '');
       datasetKey = String(body.datasetKey || datasetKey).trim() || datasetKey;
       useStockPhotos = body.useStockPhotos !== false;
     }
 
+    if (text.length > MAX_CSV_BYTES) {
+      return NextResponse.json({ error: 'CSV is larger than 5 MB' }, { status: 413 });
+    }
+    if (!/^[a-z0-9._-]{1,64}$/i.test(datasetKey)) {
+      return NextResponse.json({ error: 'datasetKey may only contain letters, numbers, dot, dash and underscore' }, { status: 400 });
+    }
+
     const { rows } = parseCsv(text);
+    if (rows.length > MAX_CSV_ROWS) {
+      return NextResponse.json({ error: `CSV has more than ${MAX_CSV_ROWS} rows` }, { status: 413 });
+    }
     if (rows.length === 0) {
       return NextResponse.json({ error: 'No data rows found' }, { status: 400 });
     }
@@ -136,8 +152,6 @@ export async function POST(request: Request) {
       })),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'CSV import failed';
-    console.error('CSV import error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/import-csv');
   }
 }

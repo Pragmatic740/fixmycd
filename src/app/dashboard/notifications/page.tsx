@@ -21,7 +21,7 @@ export default function NotificationsPage() {
     fetch('/api/notifications')
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setItems(data);
+        if (Array.isArray(data?.items)) setItems(data.items);
       })
       .finally(() => setLoading(false));
   };

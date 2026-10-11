@@ -3,11 +3,15 @@ import { db } from '../../../../db';
 import { reports, users, flags } from '../../../../db/schema';
 import { eq, desc, and } from 'drizzle-orm';
 import { getSessionUser, isModerator } from '../../../../lib/auth';
+import { serverError } from '../../../../lib/http';
 
 export async function GET() {
   try {
     const sessionUser = await getSessionUser();
-    if (!sessionUser || !isModerator(sessionUser.role)) {
+    if (!sessionUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (!isModerator(sessionUser.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -39,7 +43,6 @@ export async function GET() {
       flags: pendingFlags.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() })),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch review queue';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'review/queue GET');
   }
 }
