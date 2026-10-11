@@ -22,5 +22,7 @@ export interface ReportListItem {
   userDisplayName: string | null;
   upvoteCount: number;
   commentCount: number;
+  endorsementCount?: number;
+  endorsementAverage?: number | null;
   userHasUpvoted: boolean;
 }

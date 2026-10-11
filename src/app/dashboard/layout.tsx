@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import TrendingSidebar from '../../components/TrendingSidebar';
 import AdvancedReportForm from '../../components/reports/AdvancedReportForm';
+import { CurrentUserProvider, isAdminRole, isModeratorRole, useCurrentUser } from '../../components/CurrentUserContext';
+import { clearOfflineCaches } from '../../lib/pwa-client';
+import { loginUrlFor } from '../../lib/redirect';
+import { handleFor } from '../../lib/utils';
 
 const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -31,47 +35,54 @@ const LogInIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
 );
 
-interface CurrentUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: string;
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <CurrentUserProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </CurrentUserProvider>
+  );
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [loadingUser, setLoadingUser] = useState(true);
+  const { user: currentUser, loading: loadingUser } = useCurrentUser();
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const isAnalytics = pathname.startsWith('/dashboard/admin/analytics');
   const isAuthenticated = !!currentUser;
-  const isReadOnly = !isAuthenticated;
+  // Don't flash the guest notice while the session is still loading.
+  const isReadOnly = !loadingUser && !isAuthenticated;
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    if (!currentUser) return;
+    let cancelled = false;
+    fetch('/api/notifications?limit=1&unread=true')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.authenticated) setCurrentUser(data.user);
+        if (!cancelled && typeof data?.unreadCount === 'number') setUnreadCount(data.unreadCount);
       })
-      .finally(() => setLoadingUser(false));
-  }, []);
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, pathname]);
 
-  const navLink = (href: string, label: string, Icon: React.FC) => (
+  const navLink = (href: string, label: string, Icon: React.FC, badge?: number) => (
     <Link href={href} className={`app-nav-link ${pathname === href || (href !== '/dashboard' && pathname.startsWith(href)) ? 'active' : ''}`}>
       <Icon /> <span>{label}</span>
+      {badge ? <span className="nav-badge" aria-label={`${badge} unread`}>{badge > 99 ? '99+' : badge}</span> : null}
     </Link>
   );
 
-  const isModerator =
-    currentUser?.role === 'referee' ||
-    currentUser?.role === 'admin' ||
-    currentUser?.role === 'super_admin';
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isModerator = isModeratorRole(currentUser?.role);
+  const isAdmin = isAdminRole(currentUser?.role);
 
-  if (loadingUser) {
-    return <div className="session-loading">Loading...</div>;
-  }
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    await clearOfflineCaches();
+    window.location.href = '/login';
+  };
 
   return (
     <div className={`app-container ${isAnalytics ? 'analytics-mode' : ''}`}>
@@ -83,24 +94,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="app-nav">
           {navLink('/dashboard', 'Home', HomeIcon)}
           {navLink('/dashboard/explore', 'Explore', ExploreIcon)}
-          {isAuthenticated && navLink('/dashboard/notifications', 'Notifications', BellIcon)}
+          {isAuthenticated && navLink('/dashboard/notifications', 'Notifications', BellIcon, unreadCount)}
           {isAuthenticated && navLink('/dashboard/profile', 'Profile', UserIcon)}
           {isModerator && navLink('/dashboard/review', 'Review', ExploreIcon)}
           {isAdmin && navLink('/dashboard/admin/analytics', 'Analytics', ChartIcon)}
           {isAdmin && navLink('/dashboard/admin', 'Admin', UserIcon)}
           {isAuthenticated ? (
-            <button
-              onClick={() =>
-                fetch('/api/auth/logout', { method: 'POST' }).then(() => {
-                  window.location.href = '/login';
-                })
-              }
-              className="app-nav-link nav-btn"
-            >
+            <button onClick={logout} className="app-nav-link nav-btn">
               <LogOutIcon /> <span>Log Out</span>
             </button>
-          ) : (
-            <Link href="/login" className="app-nav-link">
+          ) : loadingUser ? null : (
+            <Link href={loginUrlFor(pathname)} className="app-nav-link">
               <LogInIcon /> <span>Sign In</span>
             </Link>
           )}
@@ -114,7 +118,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{currentUser.displayName}</div>
               <div className="sidebar-user-handle">
-                @{currentUser.email.split('@')[0]} · {currentUser.role}
+                @{handleFor(currentUser.displayName)} · {currentUser.role.replace(/_/g, ' ')}
               </div>
             </div>
           </div>
@@ -131,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {isReadOnly && (
           <div className="readonly-notice">
             <p>You&apos;re browsing as a guest. Sign in to post, comment, and upvote.</p>
-            <Link href="/login" className="btn-primary sidebar-report-btn">
+            <Link href={loginUrlFor(pathname)} className="btn-primary sidebar-report-btn">
               Sign in
             </Link>
             <Link href="/signup" className="btn-primary sidebar-report-btn">

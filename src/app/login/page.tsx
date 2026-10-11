@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { safeRedirect } from '@/lib/redirect';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -26,12 +27,16 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        router.push('/dashboard');
+        // Return to the page that sent the user here (same-site paths only).
+        const target = safeRedirect(new URLSearchParams(window.location.search).get('redirect'));
+        router.replace(target);
         router.refresh();
+      } else if (response.status === 429) {
+        setError('Too many attempts. Please wait a few minutes and try again.');
       } else {
         setError(data.error || 'Invalid email or password');
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -59,6 +64,7 @@ export default function LoginPage() {
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               required
             />
           </div>
@@ -71,6 +77,7 @@ export default function LoginPage() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
             />
           </div>
@@ -81,7 +88,7 @@ export default function LoginPage() {
         </form>
 
         <p className="auth-footer">
-          Don't have an account yet? <Link href="/signup">Sign Up</Link>
+          Don&apos;t have an account yet? <Link href="/signup">Sign Up</Link>
         </p>
       </div>
     </div>
