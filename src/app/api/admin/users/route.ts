@@ -6,6 +6,8 @@ import { desc, eq } from 'drizzle-orm';
 import { isAdmin, isAuthError, isSuperAdmin, requireAdmin, revokeUserSessions } from '@/lib/auth';
 import { notFound, parseJsonBody, parseQuery, serverError } from '@/lib/http';
 import { adminUserListQuery, adminUserPatchSchema } from '@/lib/validation';
+import { sendAccountDecisionEmail } from '@/lib/email';
+import { runAfterResponse } from '@/lib/notify';
 
 const ASSIGNABLE_BY_ADMIN = ['submitter', 'viewer', 'referee', 'admin'];
 
@@ -62,7 +64,14 @@ export async function PATCH(request: Request) {
     }
 
     const [target] = await db
-      .select({ id: users.id, role: users.role, status: users.status, disabledAt: users.disabledAt })
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        role: users.role,
+        status: users.status,
+        disabledAt: users.disabledAt,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -91,6 +100,13 @@ export async function PATCH(request: Request) {
     const lostAccess = disabled === true || (status !== undefined && status !== 'approved');
     if (roleChanged || lostAccess) {
       await revokeUserSessions(userId);
+    }
+
+    // Let the person know when their signup request is decided.
+    if (status !== undefined && status !== target.status && status !== 'pending') {
+      runAfterResponse('account-decision-email', () =>
+        sendAccountDecisionEmail({ to: target.email, displayName: target.displayName, approved: status === 'approved' })
+      );
     }
 
     await db.insert(adminAuditLog).values({

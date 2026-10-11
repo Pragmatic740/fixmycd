@@ -2334,3 +2334,23 @@ button {
   margin-top: 16px;
   text-decoration: none;
 }
+
+.admin-notice {
+  margin: 8px 0;
+  color: #16a34a;
+  font-size: 14px;
+}
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.status-badge-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+.status-badge-rejected {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
