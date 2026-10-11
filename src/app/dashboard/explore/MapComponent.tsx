@@ -7,6 +7,7 @@ import Link from 'next/link';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import { isAllowedMediaUrl } from '@/lib/media-url';
 
 interface Report {
   id: string;
@@ -39,6 +40,43 @@ const userIcon = L.divIcon({
   iconAnchor: [6, 6],
 });
 
+/**
+ * Popup built from DOM nodes with textContent: report titles and descriptions
+ * are user input and must never be parsed as HTML.
+ */
+function buildPopup(report: Report): HTMLElement {
+  const el = (tag: string, className?: string, text?: string) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  const card = el('div', 'map-popup-card');
+  card.appendChild(el('div', 'map-popup-header', report.title));
+
+  const meta = el('div', undefined, `Ref: ${report.referenceNo} · ${report.status.replace(/_/g, ' ')}`);
+  meta.style.cssText = 'font-size:10px;color:#888;margin-bottom:6px';
+  card.appendChild(meta);
+
+  if (report.imageUrl && isAllowedMediaUrl(report.imageUrl, 'image')) {
+    const img = el('img', 'map-popup-image') as HTMLImageElement;
+    img.src = report.imageUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    card.appendChild(img);
+  }
+
+  card.appendChild(el('div', 'map-popup-desc', (report.description || '').substring(0, 100)));
+
+  const link = el('a', undefined, 'View report →') as HTMLAnchorElement;
+  link.href = `/dashboard/reports/${encodeURIComponent(report.id)}`;
+  link.style.cssText = 'color:#8b5cf6;font-size:12px';
+  card.appendChild(link);
+  return card;
+}
+
 function ClusterLayer({ reports }: { reports: Report[] }) {
   const map = useMap();
 
@@ -49,16 +87,7 @@ function ClusterLayer({ reports }: { reports: Report[] }) {
       const marker = L.marker([report.latitude, report.longitude], {
         icon: createCustomIcon(report.severity),
       });
-      const popupContent = document.createElement('div');
-      popupContent.className = 'map-popup-card';
-      popupContent.innerHTML = `
-        <div class="map-popup-header">${report.title}</div>
-        <div style="font-size:10px;color:#888;margin-bottom:6px">Ref: ${report.referenceNo} · ${report.status}</div>
-        ${report.imageUrl ? `<img src="${report.imageUrl}" alt="" class="map-popup-image" />` : ''}
-        <div class="map-popup-desc">${(report.description || '').substring(0, 100)}</div>
-        <a href="/dashboard/reports/${report.id}" style="color:#8b5cf6;font-size:12px">View report →</a>
-      `;
-      marker.bindPopup(popupContent);
+      marker.bindPopup(buildPopup(report));
       group.addLayer(marker);
     });
     map.addLayer(group);
