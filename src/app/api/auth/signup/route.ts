@@ -1,55 +1,52 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { clientIp, parseJsonBody, serverError } from '@/lib/http';
+import { enforceRateLimit } from '@/lib/rate-limit';
+import { signupSchema } from '@/lib/validation';
+import { PASSWORD_HASH_COST } from '@/lib/auth';
+
+const PENDING_MESSAGE =
+  'Thanks for signing up! An admin will review your account and you will be able to log in once it is approved.';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { email, password, displayName } = body;
+    const limited = await enforceRateLimit('signup', clientIp(request));
+    if (limited) return limited;
 
-    if (!email || !password || !displayName) {
-      return NextResponse.json(
-        { error: 'Email, password, and display name are required' },
-        { status: 400 }
-      );
+    const parsed = await parseJsonBody(request, signupSchema);
+    if (!parsed.ok) return parsed.response;
+    const { email, password, displayName } = parsed.data;
+
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1);
+
+    // Same response whether or not the address is already registered, so the
+    // signup form cannot be used to discover who has an account.
+    if (!existing) {
+      const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_COST);
+      await db
+        .insert(users)
+        .values({
+          id: crypto.randomUUID(),
+          email,
+          displayName,
+          passwordHash,
+          role: 'submitter',
+          status: 'pending',
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
     }
 
-    const existingUsers = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    if (existingUsers.length > 0) {
-      return NextResponse.json(
-        { error: 'User with this email already exists' },
-        { status: 400 }
-      );
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-    const userId = crypto.randomUUID();
-
-    await db.insert(users).values({
-      id: userId,
-      email,
-      displayName,
-      passwordHash,
-      role: 'submitter',
-      status: 'pending',
-      createdAt: new Date(),
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Your account is pending approval. You will be notified once approved.',
-        user: { id: userId, email, displayName },
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ success: true, pending: true, message: PENDING_MESSAGE }, { status: 201 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Signup failed';
-    console.error('Signup error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'auth/signup');
   }
 }
