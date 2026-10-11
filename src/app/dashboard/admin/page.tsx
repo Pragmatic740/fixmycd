@@ -99,7 +99,7 @@ export default function AdminPage() {
     return (
       <div className="feed-empty">
         <h3>Admin only</h3>
-        <p>Use admin@fixmydistrict.app or superadmin@fixmydistrict.app / password123</p>
+        <p>Sign in with an admin account to manage users and moderation.</p>
       </div>
     );
   }

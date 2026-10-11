@@ -225,7 +225,6 @@ export default function AnalyticsContent() {
       <div className="feed-empty feed-empty-rich">
         <h3>Admin access required</h3>
         <p>Sign in with an admin account to open the intelligence dashboard.</p>
-        <p className="report-ref">Demo: admin@fixmydistrict.app / password123</p>
         <Link href="/login" className="btn-primary">Go to login</Link>
       </div>
     );
