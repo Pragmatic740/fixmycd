@@ -21,7 +21,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "test:e2e": "playwright test",
+    "test:e2e": "tsx tests/e2e/prepare-db.ts && playwright test",
     "test:seed:record": "tsx tests/seed/record-snapshot.ts"
   },
   "dependencies": {
