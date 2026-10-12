@@ -273,3 +273,11 @@ export const unsubscribeSchema = z.object({
   u: z.string().min(1).max(100),
   t: z.string().min(1).max(200),
 });
+
+export const geocodeQuery = z.union([
+  z.object({ q: text().pipe(z.string().min(3, 'Enter at least 3 characters').max(200)) }),
+  z.object({
+    lat: z.coerce.number().refine(Number.isFinite).min(-90).max(90),
+    lng: z.coerce.number().refine(Number.isFinite).min(-180).max(180),
+  }),
+]);

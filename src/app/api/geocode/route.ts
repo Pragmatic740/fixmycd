@@ -1,56 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { geocodeCoordinates } from '@/lib/geo/census';
-import { clientIp, serverError } from '@/lib/http';
+import { NextResponse } from 'next/server';
+import { geocodeAddress, geocodeCoordinates, type CensusGeography } from '@/lib/geo/census';
+import { clientIp, parseQuery, serverError } from '@/lib/http';
 import { enforceRateLimit } from '@/lib/rate-limit';
+import { geocodeQuery } from '@/lib/validation';
 
-export async function GET(request: NextRequest) {
+const toResponse = (geo: CensusGeography) => ({
+  addressLine: geo.addressLine || '',
+  city: geo.city || '',
+  stateProvince: geo.stateProvince || '',
+  postalCode: geo.postalCode || '',
+  county: geo.county || '',
+  countryCode: geo.countryCode || '',
+  source: geo.geocodeSource,
+  lat: geo.latitude,
+  lng: geo.longitude,
+});
+
+/**
+ * GET /api/geocode?lat=&lng=  reverse geocode a map click
+ * GET /api/geocode?q=         find an address / ZIP / place
+ */
+export async function GET(request: Request) {
   try {
     const limited = await enforceRateLimit('geocode', clientIp(request));
     if (limited) return limited;
 
-    const searchParams = request.nextUrl.searchParams;
-    const lat = searchParams.get('lat');
-    const lng = searchParams.get('lng');
-
-    if (!lat || !lng) {
-      return NextResponse.json(
-        { error: 'Missing lat or lng parameters' },
-        { status: 400 }
-      );
+    const parsed = parseQuery(new URL(request.url).searchParams, geocodeQuery);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: 'Provide lat and lng, or an address in q' }, { status: 400 });
     }
 
-    const parsedLat = parseFloat(lat);
-    const parsedLng = parseFloat(lng);
-
-    if (
-      !Number.isFinite(parsedLat) ||
-      !Number.isFinite(parsedLng) ||
-      Math.abs(parsedLat) > 90 ||
-      Math.abs(parsedLng) > 180
-    ) {
-      return NextResponse.json(
-        { error: 'Invalid lat or lng values' },
-        { status: 400 }
-      );
+    if ('q' in parsed.data) {
+      const found = await geocodeAddress(parsed.data.q);
+      if (!found) return NextResponse.json({ error: 'No match for that address' }, { status: 404 });
+      return NextResponse.json(toResponse(found));
     }
 
-    const result = await geocodeCoordinates(parsedLat, parsedLng);
-
-    if (!result) {
-      return NextResponse.json(
-        { error: 'Could not geocode these coordinates' },
-        { status: 404 }
-      );
+    const result = await geocodeCoordinates(parsed.data.lat, parsed.data.lng);
+    if (result.geocodeStatus !== 'matched') {
+      return NextResponse.json({ error: 'Could not find an address for this spot' }, { status: 404 });
     }
-
-    return NextResponse.json({
-      city: result.city || '',
-      stateProvince: result.stateProvince || '',
-      postalCode: result.postalCode || '',
-      county: result.county || '',
-      lat: parsedLat,
-      lng: parsedLng,
-    });
+    return NextResponse.json(toResponse(result));
   } catch (error) {
     return serverError(error, 'geocode');
   }
