@@ -2381,3 +2381,8 @@ a.notification-item {
 .beta-signup-form input {
   min-width: 240px;
 }
+
+.endorsement-mine {
+  border-left: 3px solid #8b5cf6;
+  padding-left: 8px;
+}

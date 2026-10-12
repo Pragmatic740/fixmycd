@@ -2,11 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import ShareSheet from '@/components/ShareSheet';
 import { EndorsementsSection } from '@/components/reports/EndorsementsSection';
 import { formatRelativeTime, handleFor } from '@/lib/utils';
+import { isAllowedMediaUrl } from '@/lib/media-url';
+import { loginUrlFor } from '@/lib/redirect';
+import { isModeratorRole, useCurrentUser } from '@/components/CurrentUserContext';
 
 const MiniMap = dynamic(() => import('../../../../components/MiniMap'), { ssr: false });
 
@@ -38,63 +41,75 @@ interface Comment {
   id: string;
   body: string;
   createdAt: string;
+  userId?: string;
   userDisplayName: string | null;
 }
 
 export default function ReportDetailPage() {
   const params = useParams();
+  const pathname = usePathname();
   const id = params.id as string;
+  const { user } = useCurrentUser();
+  const isAuthenticated = !!user;
+  const isExpert = isModeratorRole(user?.role);
   const [report, setReport] = useState<ReportDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'not-found' | 'error'>('loading');
   const [isPosting, setIsPosting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isExpert, setIsExpert] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const loading = loadState === 'loading';
+  const loginHref = loginUrlFor(pathname || `/dashboard/reports/${id}`);
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        setIsAuthenticated(!!data?.authenticated);
-        const role = data?.user?.role;
-        setIsExpert(role === 'referee' || role === 'admin' || role === 'super_admin');
-      })
-      .catch(() => setIsAuthenticated(false));
-
-    Promise.all([
-      fetch(`/api/reports/${id}`).then((r) => r.json()),
-      fetch(`/api/reports/${id}/comments`).then((r) => r.json()),
-    ])
-      .then(([reportData, commentsData]) => {
-        if (!reportData.error) setReport(reportData);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [reportRes, commentsRes] = await Promise.all([
+          fetch(`/api/reports/${encodeURIComponent(id)}`),
+          fetch(`/api/reports/${encodeURIComponent(id)}/comments`),
+        ]);
+        if (cancelled) return;
+        if (reportRes.status === 404) {
+          setLoadState('not-found');
+          return;
+        }
+        if (!reportRes.ok) {
+          setLoadState('error');
+          return;
+        }
+        setReport(await reportRes.json());
+        const commentsData = commentsRes.ok ? await commentsRes.json() : [];
         if (Array.isArray(commentsData)) setComments(commentsData);
-      })
-      .finally(() => setLoading(false));
+        setLoadState('ready');
+      } catch {
+        if (!cancelled) setLoadState('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const toggleUpvote = async () => {
     if (!report) return;
     if (!isAuthenticated) {
-      window.location.href = `/login?redirect=/dashboard/reports/${id}`;
+      window.location.href = loginHref;
       return;
     }
     const method = report.userHasUpvoted ? 'DELETE' : 'POST';
-    const res = await fetch(`/api/reports/${id}/upvote`, { method });
+    const res = await fetch(`/api/reports/${encodeURIComponent(id)}/upvote`, { method });
     if (res.ok) {
-      setReport({
-        ...report,
-        userHasUpvoted: !report.userHasUpvoted,
-        upvoteCount: report.upvoteCount + (report.userHasUpvoted ? -1 : 1),
-      });
+      const data = await res.json();
+      setReport({ ...report, userHasUpvoted: data.upvoted, upvoteCount: data.upvoteCount });
     }
   };
 
   const submitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthenticated) {
-      window.location.href = `/login?redirect=/dashboard/reports/${id}`;
+      window.location.href = loginHref;
       return;
     }
     if (!newComment.trim()) {
@@ -104,29 +119,23 @@ export default function ReportDetailPage() {
     setIsPosting(true);
     setCommentError(null);
     try {
-      const res = await fetch(`/api/reports/${id}/comments`, {
+      const res = await fetch(`/api/reports/${encodeURIComponent(id)}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: newComment }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const c = await res.json();
-        setComments([
-          {
-            ...c,
-            userDisplayName: 'You',
-            createdAt: new Date().toISOString(),
-          },
-          ...comments,
-        ]);
+        setComments([data as Comment, ...comments]);
         setNewComment('');
         if (report) setReport({ ...report, commentCount: report.commentCount + 1 });
+      } else if (res.status === 429) {
+        setCommentError('You are commenting too fast. Please wait a few minutes.');
       } else {
-        const data = await res.json();
-        setCommentError(data.error || 'Failed to post comment');
+        setCommentError(data.fields?.body || data.error || 'Failed to post comment');
       }
-    } catch (err) {
-      setCommentError(err instanceof Error ? err.message : 'Failed to post comment');
+    } catch {
+      setCommentError('Failed to post comment. Check your connection.');
     } finally {
       setIsPosting(false);
     }
@@ -134,17 +143,24 @@ export default function ReportDetailPage() {
 
   const flagReport = async () => {
     if (!isAuthenticated) {
-      window.location.href = `/login?redirect=/dashboard/reports/${id}`;
+      window.location.href = loginHref;
       return;
     }
     const reason = prompt('Why are you flagging this report?');
-    if (!reason) return;
-    await fetch(`/api/reports/${id}/flag`, {
+    if (!reason?.trim()) return;
+    const res = await fetch(`/api/reports/${encodeURIComponent(id)}/flag`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason: reason.trim().slice(0, 500) }),
     });
-    alert('Report flagged for review.');
+    const data = await res.json().catch(() => ({}));
+    setNotice(
+      res.ok
+        ? data.alreadyFlagged
+          ? 'You already flagged this report; moderators will review it.'
+          : 'Thanks — moderators will review this report.'
+        : data.error || 'Could not flag this report.'
+    );
   };
 
   if (loading) {
@@ -162,7 +178,19 @@ export default function ReportDetailPage() {
     );
   }
 
-  if (!report) return <div className="feed-empty">Report not found.</div>;
+  if (loadState === 'not-found' || (loadState === 'ready' && !report)) {
+    return <div className="feed-empty">Report not found. It may have been removed by a moderator.</div>;
+  }
+  if (loadState === 'error' || !report) {
+    return (
+      <div className="feed-empty" role="alert">
+        Could not load this report.{' '}
+        <button className="btn-secondary btn-sm" onClick={() => window.location.reload()}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="report-detail">
@@ -172,7 +200,7 @@ export default function ReportDetailPage() {
         </Link>
         <h2>{report.title}</h2>
         <p className="report-ref">
-          Ref: {report.referenceNo} · {report.status.replace('_', ' ')}
+          Ref: {report.referenceNo} · {report.status.replace(/_/g, ' ')}
         </p>
       </div>
 
@@ -192,7 +220,7 @@ export default function ReportDetailPage() {
         <div className="report-card-body">
           {report.category && (
             <p className="report-category">
-              {report.category} · {report.subcategory} · {report.postAction}
+              {[report.category, report.subcategory, report.postAction].filter(Boolean).join(' · ')}
             </p>
           )}
           <p className="report-desc">{report.description}</p>
@@ -200,39 +228,33 @@ export default function ReportDetailPage() {
             <p className="ai-summary">AI Summary: {report.aiSummary}</p>
           )}
 
-          {report.imageUrl && (
-            <img src={report.imageUrl} alt={report.title} className="report-image" />
+          {report.imageUrl && isAllowedMediaUrl(report.imageUrl, 'image') && (
+            <img src={report.imageUrl} alt={report.title} className="report-image" referrerPolicy="no-referrer" />
           )}
-          {report.videoUrl && (
+          {report.videoUrl && isAllowedMediaUrl(report.videoUrl, 'video') && (
             <video src={report.videoUrl} controls className="report-media" />
           )}
-          {report.audioUrl && (
+          {report.audioUrl && isAllowedMediaUrl(report.audioUrl, 'audio') && (
             <audio src={report.audioUrl} controls className="report-media" />
           )}
 
           <MiniMap latitude={report.latitude} longitude={report.longitude} />
 
           <div className="report-actions">
-            {isAuthenticated ? (
-              <button
-                className={`action-btn ${
-                  report.userHasUpvoted ? 'action-btn-active' : ''
-                }`}
-                onClick={toggleUpvote}
-              >
-                Upvote ({report.upvoteCount})
-              </button>
-            ) : (
-              <span className="action-btn action-disabled" title="Sign in to upvote">
-                Upvote ({report.upvoteCount})
-              </span>
-            )}
+            <button
+              className={`action-btn ${report.userHasUpvoted ? 'action-btn-active' : ''}`}
+              onClick={toggleUpvote}
+              aria-pressed={report.userHasUpvoted}
+              title={isAuthenticated ? undefined : 'Sign in to upvote'}
+            >
+              Upvote ({report.upvoteCount})
+            </button>
             {isAuthenticated ? (
               <button className="action-btn" onClick={flagReport}>
                 Flag
               </button>
             ) : (
-              <Link href={`/login?redirect=/dashboard/reports/${id}`} className="action-btn">
+              <Link href={loginHref} className="action-btn">
                 Sign in to interact
               </Link>
             )}
@@ -245,6 +267,7 @@ export default function ReportDetailPage() {
               📄 PDF
             </a>
           </div>
+          {notice && <p className="admin-notice" role="status">{notice}</p>}
           <ShareSheet
             urlPath={`/r/${report.id}`}
             title={report.title}
@@ -291,7 +314,7 @@ export default function ReportDetailPage() {
         ) : (
           <div className="comment-signin-prompt">
             <p>
-              <Link href={`/login?redirect=/dashboard/reports/${id}`}>Sign in</Link> to
+              <Link href={loginHref}>Sign in</Link> to
               leave a comment.
             </p>
           </div>
@@ -309,12 +332,16 @@ export default function ReportDetailPage() {
                   <div className="comment-avatar">
                     {c.userDisplayName?.charAt(0)?.toUpperCase() || '?'}
                   </div>
-                  <span className="comment-name">
-                    {c.userDisplayName || 'Anonymous'}
-                  </span>
-                  <span className="comment-time">
+                  {c.userId ? (
+                    <Link href={`/dashboard/u/${c.userId}`} className="comment-name">
+                      {c.userId === user?.id ? 'You' : c.userDisplayName || 'Anonymous'}
+                    </Link>
+                  ) : (
+                    <span className="comment-name">{c.userDisplayName || 'Anonymous'}</span>
+                  )}
+                  <time className="comment-time" dateTime={c.createdAt} title={new Date(c.createdAt).toLocaleString()}>
                     {formatRelativeTime(c.createdAt)}
-                  </span>
+                  </time>
                 </div>
                 <div className="comment-body">{c.body}</div>
               </div>
