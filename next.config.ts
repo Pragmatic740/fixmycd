@@ -40,6 +40,11 @@ const nextConfig: NextConfig = {
     ],
   },
   poweredByHeader: false,
+  env: {
+    // Versions the service worker cache so each deploy starts clean.
+    NEXT_PUBLIC_APP_VERSION:
+      process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || process.env.NEXT_PUBLIC_APP_VERSION || `build-${Date.now()}`,
+  },
   async headers() {
     return [
       {
