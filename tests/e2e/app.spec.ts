@@ -100,7 +100,7 @@ test('report titles are shown as text on the explore map (stored XSS regression)
   expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
 
   await page.goto('/dashboard');
-  await expect(page.getByText('<img src=x onerror="window.__xss=1">Pothole')).toBeVisible();
+  await expect(page.locator('.feed-list').getByText('<img src=x onerror="window.__xss=1">Pothole')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
 });
 

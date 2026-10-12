@@ -487,7 +487,6 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
             Stock photos when missing
           </label>
           {/* A file download from an API route, not page navigation. */}
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a className="btn-secondary btn-sm" href="/api/admin/analytics/import-csv" download>
             Download template
           </a>
