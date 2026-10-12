@@ -1,34 +1,48 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import React, { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+
+export interface ResolvedLocation {
+  addressLine: string;
+  city: string;
+  stateProvince: string;
+  postalCode: string;
+  county: string;
+  countryCode: string;
+  latitude: number;
+  longitude: number;
+}
 
 interface PinPickerMapProps {
   latitude: number;
   longitude: number;
   onChange: (lat: number, lng: number) => void;
-  onLocationChange?: (location: {
-    city: string;
-    stateProvince: string;
-    postalCode: string;
-    county: string;
-    latitude: number;
-    longitude: number;
-  }) => void;
+  /** Called with the address of the pin; `null` when no address was found. */
+  onLocationChange?: (location: ResolvedLocation | null) => void;
+  /** Bump this to re-run reverse geocoding for the current pin (e.g. after "Use my location"). */
+  resolveToken?: number;
 }
 
-function ClickHandler({ onChange, onGeocode }: { 
-  onChange: (lat: number, lng: number) => void;
-  onGeocode: (lat: number, lng: number) => Promise<void>;
-}) {
+function ClickHandler({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
-    async click(e) {
-      const { lat, lng } = e.latlng;
-      onChange(lat, lng);
-      await onGeocode(lat, lng);
+    click(e) {
+      onPick(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+}
+
+/** Keep the map centred on the pin when it moves for reasons other than a click. */
+function MapRecenter({ latitude, longitude }: { latitude: number; longitude: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    if (!map.getBounds().pad(-0.2).contains([latitude, longitude])) {
+      map.setView([latitude, longitude], map.getZoom(), { animate: true });
+    }
+  }, [map, latitude, longitude]);
   return null;
 }
 
@@ -39,95 +53,127 @@ const pinIcon = L.divIcon({
   iconAnchor: [10, 10],
 });
 
-export default function PinPickerMap({ latitude, longitude, onChange, onLocationChange }: PinPickerMapProps) {
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+type GeocodeJson = Omit<ResolvedLocation, 'latitude' | 'longitude'> & { lat: number; lng: number; error?: string };
 
+const toResolved = (d: GeocodeJson): ResolvedLocation => ({
+  addressLine: d.addressLine || '',
+  city: d.city || '',
+  stateProvince: d.stateProvince || '',
+  postalCode: d.postalCode || '',
+  county: d.county || '',
+  countryCode: d.countryCode || '',
+  latitude: d.lat,
+  longitude: d.lng,
+});
+
+export default function PinPickerMap({ latitude, longitude, onChange, onLocationChange, resolveToken }: PinPickerMapProps) {
+  const [status, setStatus] = useState<{ kind: 'busy' | 'error'; text: string } | null>(null);
+  const [query, setQuery] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const valid = Number.isFinite(latitude) && Number.isFinite(longitude);
+
+  // Error toasts clear themselves.
   useEffect(() => {
-    delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
-  }, []);
+    if (status?.kind !== 'error') return;
+    const t = setTimeout(() => setStatus(null), 4000);
+    return () => clearTimeout(t);
+  }, [status]);
 
-  const handleGeocode = async (lat: number, lng: number) => {
-    if (!onLocationChange) return;
-    
-    setIsGeocoding(true);
-    setGeocodeError(null);
-    
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  /** Run one geocode request, cancelling any still in flight (rapid clicks). */
+  const lookup = async (params: URLSearchParams, busyText: string): Promise<GeocodeJson | null> => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStatus({ kind: 'busy', text: busyText });
     try {
-      const response = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Geocoding failed');
+      const res = await fetch(`/api/geocode?${params}`, { signal: controller.signal });
+      const data: GeocodeJson = await res.json();
+      if (controller.signal.aborted) return null;
+      if (!res.ok) {
+        setStatus({ kind: 'error', text: res.status === 429 ? 'Too many lookups — wait a moment' : data.error || 'Address lookup failed' });
+        return null;
       }
-      
-      onLocationChange({
-        city: data.city || '',
-        stateProvince: data.stateProvince || '',
-        postalCode: data.postalCode || '',
-        county: data.county || '',
-        latitude: lat,
-        longitude: lng,
-      });
+      setStatus(null);
+      return data;
     } catch (err) {
-      setGeocodeError(err instanceof Error ? err.message : 'Geocoding failed');
-    } finally {
-      setIsGeocoding(false);
+      if ((err as Error).name !== 'AbortError') setStatus({ kind: 'error', text: 'Address lookup failed' });
+      return null;
     }
   };
 
+  const reverseGeocode = async (lat: number, lng: number) => {
+    if (!onLocationChange) return;
+    const data = await lookup(new URLSearchParams({ lat: String(lat), lng: String(lng) }), 'Resolving location…');
+    onLocationChange(data ? toResolved({ ...data, lat, lng }) : null);
+  };
+
+  const pick = (lat: number, lng: number) => {
+    onChange(lat, lng);
+    void reverseGeocode(lat, lng);
+  };
+
+  // Re-resolve when the parent asks (e.g. after "Use my location").
+  const lastToken = useRef(resolveToken);
+  useEffect(() => {
+    if (resolveToken === undefined || resolveToken === lastToken.current) return;
+    lastToken.current = resolveToken;
+    if (!valid) return;
+    // Short delay also debounces coordinates typed into the inputs.
+    const t = setTimeout(() => void reverseGeocode(latitude, longitude), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the token changes
+  }, [resolveToken]);
+
+  const search = async (e: React.FormEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (q.length < 3) return;
+    const data = await lookup(new URLSearchParams({ q }), 'Searching…');
+    if (!data) return;
+    onChange(data.lat, data.lng);
+    onLocationChange?.(toResolved(data));
+  };
+
   return (
-    <div className="pin-picker-wrapper" style={{ position: 'relative' }}>
+    <div className="pin-picker-wrapper">
+      <div className="pin-picker-search">
+        <input
+          type="search"
+          value={query}
+          maxLength={200}
+          placeholder="Search address or ZIP"
+          aria-label="Search for an address or ZIP code"
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void search(e);
+          }}
+        />
+        <button type="button" className="btn-secondary btn-sm" onClick={(e) => void search(e)} disabled={query.trim().length < 3}>
+          Find
+        </button>
+      </div>
       <MapContainer
-        center={[latitude, longitude]}
+        center={valid ? [latitude, longitude] : [0, 0]}
         zoom={14}
         style={{ width: '100%', height: '200px', borderRadius: '8px' }}
         scrollWheelZoom={false}
       >
-        <TileLayer
-          attribution='&copy; OpenStreetMap'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <ClickHandler onChange={onChange} onGeocode={handleGeocode} />
-        <Marker position={[latitude, longitude]} icon={pinIcon} />
+        <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <ClickHandler onPick={pick} />
+        {valid && <MapRecenter latitude={latitude} longitude={longitude} />}
+        {valid && <Marker position={[latitude, longitude]} icon={pinIcon} />}
       </MapContainer>
-      
-      {/* Geocoding status overlay */}
-      {isGeocoding && (
-        <div style={{
-          position: 'absolute',
-          bottom: '40px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(0,0,0,0.75)',
-          color: 'white',
-          padding: '6px 14px',
-          borderRadius: '6px',
-          fontSize: '13px',
-          zIndex: 1000,
-        }}>
-          ⟳ Resolving location...
+
+      {status && (
+        <div className={`pin-picker-status ${status.kind === 'error' ? 'pin-picker-status-error' : ''}`} role="status">
+          {status.kind === 'busy' ? '⟳ ' : '⚠️ '}
+          {status.text}
         </div>
       )}
-      
-      {geocodeError && (
-        <div style={{
-          position: 'absolute',
-          bottom: '40px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(220,50,50,0.9)',
-          color: 'white',
-          padding: '6px 14px',
-          borderRadius: '6px',
-          fontSize: '13px',
-          zIndex: 1000,
-        }}>
-          ⚠️ {geocodeError}
-        </div>
-      )}
-      
-      <p className="pin-picker-hint">Click the map to set location</p>
+
+      <p className="pin-picker-hint">Click the map to set the location</p>
     </div>
   );
 }

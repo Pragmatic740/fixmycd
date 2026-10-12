@@ -1,164 +1,196 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  RECORDING_LIMITS,
+  describeMediaError,
+  fitWithin,
+  formatDuration,
+  pickRecorderMimeType,
+  type RecordKind,
+} from '@/lib/media-recording';
+
+type Mode = 'photo' | RecordKind;
 
 interface MediaRecorderProps {
-  onRecordingComplete: (blob: Blob, type: 'photo' | 'video' | 'audio') => void;
+  onRecordingComplete: (blob: Blob, type: Mode) => void;
   onCancel: () => void;
 }
 
-export function InAppMediaRecorder({ onRecordingComplete, onCancel }: MediaRecorderProps) {
-  const [mode, setMode] = useState<'photo' | 'video' | 'audio' | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+const PHOTO_MAX_DIMENSION = 1920;
+const PHOTO_QUALITY = 0.85;
 
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+const supportsCapture = () =>
+  typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+
+export function InAppMediaRecorder({ onRecordingComplete, onCancel }: MediaRecorderProps) {
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [preview, setPreview] = useState<{ url: string; blob: Blob } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const bytesRef = useRef(0);
+  const discardRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chunksRef = useRef<Blob[]>([]);
 
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (preview) {
-        URL.revokeObjectURL(preview);
-      }
-    };
-  }, [preview]);
-
-  const checkSupport = () => {
-    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  };
-
-  const startRecording = useCallback(async (type: 'photo' | 'video' | 'audio') => {
-    setError(null);
-    setMode(type);
-
-    if (!checkSupport()) {
-      setError('Your browser does not support in-app recording. Please use the file picker instead.');
-      return;
-    }
-
-    try {
-      const constraints: MediaStreamConstraints = {
-        video: type === 'audio' ? false : {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: type !== 'photo',
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      mediaStreamRef.current = stream;
-      setHasPermission(true);
-
-      if (videoRef.current && type !== 'audio') {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      if (type === 'photo') return;
-
-      const mimeType = type === 'video'
-        ? MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm'
-        : 'audio/webm';
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        setPreview(URL.createObjectURL(blob));
-      };
-
-      recorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      setHasPermission(false);
-      setError(err instanceof Error ? err.message : 'Failed to access media devices. Please check your permissions.');
-    }
+  /** Stop the recorder and release camera/microphone. Safe to call repeatedly. */
+  const stopAll = useCallback((discard: boolean) => {
+    discardRef.current = discard;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    recorderRef.current = null;
+    setStream((current) => {
+      current?.getTracks().forEach((t) => t.stop());
+      return null;
+    });
+    setIsRecording(false);
   }, []);
 
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-  }, [isRecording]);
+  // Release devices and object URLs when the recorder closes.
+  useEffect(() => () => stopAll(true), [stopAll]);
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview.url);
+  }, [preview]);
+
+  // Attach the live stream once both it and the <video> element exist.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    video.play().catch(() => {});
+    return () => {
+      video.srcObject = null;
+    };
+  }, [stream, mode]);
+
+  // Recording timer with an automatic stop at the duration limit.
+  useEffect(() => {
+    if (!isRecording || (mode !== 'video' && mode !== 'audio')) return;
+    const started = Date.now();
+    const limit = RECORDING_LIMITS.maxSeconds[mode];
+    const t = setInterval(() => {
+      const seconds = (Date.now() - started) / 1000;
+      setElapsed(seconds);
+      if (seconds >= limit) {
+        setNotice(`Recording stopped at the ${formatDuration(limit)} limit.`);
+        stopAll(false);
+      }
+    }, 250);
+    return () => clearInterval(t);
+  }, [isRecording, mode, stopAll]);
+
+  const start = useCallback(
+    async (type: Mode) => {
+      setError(null);
+      setNotice(null);
+      setPreview(null);
+      setElapsed(0);
+      setMode(type);
+
+      if (!supportsCapture()) {
+        setError('Your browser does not support in-app recording. Please use the file picker instead.');
+        return;
+      }
+
+      let media: MediaStream | null = null;
+      try {
+        media = await navigator.mediaDevices.getUserMedia({
+          video:
+            type === 'audio'
+              ? false
+              : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: type !== 'photo',
+        });
+        setStream(media);
+        if (type === 'photo') return;
+
+        const mimeType =
+          typeof MediaRecorder !== 'undefined'
+            ? pickRecorderMimeType(type, (t) => MediaRecorder.isTypeSupported(t))
+            : undefined;
+        const recorder = new MediaRecorder(media, {
+          ...(mimeType ? { mimeType } : {}),
+          ...(type === 'video' ? { videoBitsPerSecond: 1_000_000 } : {}),
+        });
+        recorderRef.current = recorder;
+        chunksRef.current = [];
+        bytesRef.current = 0;
+        discardRef.current = false;
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size === 0) return;
+          chunksRef.current.push(event.data);
+          bytesRef.current += event.data.size;
+          if (bytesRef.current >= RECORDING_LIMITS.maxBytes) {
+            setNotice('Recording stopped at the 10 MB upload limit.');
+            stopAll(false);
+          }
+        };
+        recorder.onstop = () => {
+          if (discardRef.current || chunksRef.current.length === 0) return;
+          const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType || `${type}/webm` });
+          setPreview({ url: URL.createObjectURL(blob), blob });
+        };
+
+        // Timeslice so size is checked while recording, not only at the end.
+        recorder.start(1000);
+        setIsRecording(true);
+      } catch (err) {
+        media?.getTracks().forEach((t) => t.stop());
+        stopAll(true);
+        setError(describeMediaError(err));
+      }
+    },
+    [stopAll]
+  );
 
   const takePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        setPreview(URL.createObjectURL(blob));
-        if (mediaStreamRef.current) {
-          mediaStreamRef.current.getTracks().forEach(track => track.stop());
+    if (!video || !canvas || !video.videoWidth) return;
+    const { width, height } = fitWithin(video.videoWidth, video.videoHeight, PHOTO_MAX_DIMENSION);
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d')?.drawImage(video, 0, 0, width, height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setError('Could not capture the photo. Please try again.');
+          return;
         }
-      }
-    }, 'image/jpeg');
-  }, []);
+        setPreview({ url: URL.createObjectURL(blob), blob });
+        stopAll(true);
+      },
+      'image/jpeg',
+      PHOTO_QUALITY
+    );
+  }, [stopAll]);
 
-  const confirm = useCallback(async () => {
-    if (!preview) return;
-    try {
-      const response = await fetch(preview);
-      const blob = await response.blob();
-      onRecordingComplete(blob, mode as 'photo' | 'video' | 'audio');
-      reset();
-    } catch (err) {
-      setError('Failed to process recording');
-    }
-  }, [preview, mode, onRecordingComplete]);
+  const useRecording = () => {
+    if (!preview || !mode) return;
+    onRecordingComplete(preview.blob, mode);
+  };
 
-  const reset = useCallback(() => {
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (preview) {
-      URL.revokeObjectURL(preview);
-    }
-    setMode(null);
-    setIsRecording(false);
-    setPreview(null);
-    setError(null);
-    chunksRef.current = [];
-  }, [preview]);
+  const retake = () => {
+    if (mode) void start(mode);
+  };
 
-  // Fallback if no media device support
-  if (!checkSupport()) {
+  const cancel = () => {
+    stopAll(true);
+    onCancel();
+  };
+
+  if (!supportsCapture()) {
     return (
       <div className="media-recorder-fallback">
         <p>In-app recording is not supported on this browser. Please use the file picker instead.</p>
-        <button 
-          onClick={onCancel} 
-          className="btn-secondary"
-          style={{ color: '#333', background: '#f0f0f0', border: '1px solid #ccc', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}
-        >
+        <button onClick={onCancel} className="btn-secondary">
           Close
         </button>
       </div>
@@ -168,141 +200,76 @@ export function InAppMediaRecorder({ onRecordingComplete, onCancel }: MediaRecor
   return (
     <div className="media-recorder">
       {error && (
-        <div className="recorder-error" style={{
-          background: '#fef2f2',
-          color: '#dc2626',
-          padding: '12px',
-          borderRadius: '8px',
-          marginBottom: '12px',
-        }}>
+        <div className="recorder-error" role="alert">
           ⚠️ {error}
         </div>
       )}
+      {notice && <div className="recorder-notice" role="status">{notice}</div>}
 
       {!mode && (
-        <div className="recorder-options" style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          padding: '20px',
-        }}>
-          <h4 style={{ margin: '0 0 8px 0' }}>Record Media</h4>
-          <button onClick={() => startRecording('photo')} className="btn-primary">
+        <div className="recorder-options">
+          <h4>Record Media</h4>
+          <button onClick={() => void start('photo')} className="btn-primary">
             📸 Take Photo
           </button>
-          <button onClick={() => startRecording('video')} className="btn-primary">
-            🎥 Record Video
+          <button onClick={() => void start('video')} className="btn-primary">
+            🎥 Record Video (up to {formatDuration(RECORDING_LIMITS.maxSeconds.video)})
           </button>
-          <button onClick={() => startRecording('audio')} className="btn-primary">
-            🎙️ Record Audio
+          <button onClick={() => void start('audio')} className="btn-primary">
+            🎙️ Record Audio (up to {formatDuration(RECORDING_LIMITS.maxSeconds.audio)})
           </button>
-          <button 
-            onClick={onCancel} 
-            className="btn-secondary" 
-            style={{ marginTop: '8px', color: '#333', background: '#f0f0f0', border: '1px solid #ccc', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}
-          >
+          <button onClick={cancel} className="btn-secondary">
             Cancel
           </button>
         </div>
       )}
 
       {mode && (
-        <div className="recorder-preview" style={{ padding: '16px' }}>
-          {!preview && (mode === 'photo' || mode === 'video') && (
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              style={{ width: '100%', maxHeight: '300px', borderRadius: '8px', background: '#000' }}
-            />
-          )}
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
+        <div className="recorder-preview">
+          {!preview && mode !== 'audio' && <video ref={videoRef} autoPlay muted playsInline className="recorder-live" />}
+          <canvas ref={canvasRef} hidden />
 
           {preview && (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              minHeight: '200px',
-              background: '#f0f0f0',
-              borderRadius: '8px',
-              overflow: 'hidden',
-            }}>
-              {mode === 'photo' && <img src={preview} alt="Preview" style={{ maxWidth: '100%', maxHeight: '300px' }} />}
-              {mode === 'video' && <video src={preview} controls style={{ maxWidth: '100%', maxHeight: '300px' }} />}
-              {mode === 'audio' && <audio src={preview} controls />}
+            <div className="recorder-result">
+              {mode === 'photo' && <img src={preview.url} alt="Captured photo preview" />}
+              {mode === 'video' && <video src={preview.url} controls playsInline />}
+              {mode === 'audio' && <audio src={preview.url} controls />}
             </div>
           )}
 
-          {/* Recording indicator */}
-          {!preview && mode !== 'photo' && isRecording && (
-            <div style={{
-              textAlign: 'center',
-              marginTop: '12px',
-              color: '#dc2626',
-              fontSize: '14px',
-              fontWeight: 600,
-            }}>
-              ● Recording...
+          {!preview && isRecording && (
+            <div className="recorder-indicator" aria-live="polite">
+              ● Recording {formatDuration(elapsed)} / {formatDuration(RECORDING_LIMITS.maxSeconds[mode as RecordKind])}
             </div>
           )}
 
-          <div className="recorder-controls" style={{
-            display: 'flex',
-            gap: '8px',
-            marginTop: '16px',
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-          }}>
-            {/* Photo: Capture button */}
-            {!preview && mode === 'photo' && (
-              <button 
-                onClick={takePhoto} 
-                className="btn-primary"
-                style={{ background: '#8b5cf6', color: 'white', padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
-              >
+          <div className="recorder-controls">
+            {!preview && mode === 'photo' && stream && (
+              <button onClick={takePhoto} className="btn-primary">
                 📸 Capture
               </button>
             )}
-
-            {/* Video/Audio: Stop button while recording */}
             {!preview && mode !== 'photo' && isRecording && (
-              <button 
-                onClick={stopRecording} 
-                className="btn-danger"
-                style={{ background: '#dc2626', color: 'white', padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
-              >
+              <button onClick={() => stopAll(false)} className="btn-danger">
                 ⏹ Stop Recording
               </button>
             )}
-
-            {/* Preview: Use/Retake */}
             {preview && (
               <>
-                <button 
-                  onClick={confirm} 
-                  className="btn-primary"
-                  style={{ background: '#8b5cf6', color: 'white', padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
-                >
+                <button onClick={useRecording} className="btn-primary">
                   ✅ Use This
                 </button>
-                <button 
-                  onClick={reset} 
-                  className="btn-secondary"
-                  style={{ color: '#333', background: '#f0f0f0', border: '1px solid #ccc', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}
-                >
+                <button onClick={retake} className="btn-secondary">
                   🔄 Retake
                 </button>
               </>
             )}
-
-            {/* Cancel always available */}
-            <button 
-              onClick={() => { reset(); onCancel(); }} 
-              className="btn-secondary"
-              style={{ color: '#333', background: '#f0f0f0', border: '1px solid #ccc', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}
-            >
+            {error && !preview && (
+              <button onClick={() => setMode(null)} className="btn-secondary">
+                Back
+              </button>
+            )}
+            <button onClick={cancel} className="btn-secondary">
               Cancel
             </button>
           </div>
