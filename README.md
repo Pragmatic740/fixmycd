@@ -1,25 +1,35 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
-To get started you need 
-
-First, run the development server:
 
 ```bash
+cp .env.example .env          # set DATABASE_URL (and the optional services)
+npm install
+npm run db:migrate            # create/upgrade the schema (also runs on every Vercel build)
+npm run db:seed               # optional demo data
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The demo seed creates sample accounts (e.g. `admin@fixmydistrict.app`)
+with the password set in `seed.ts`; see that file for the full list.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tests
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+npm run lint && npm run typecheck && npm test
+npm run build && npm run test:e2e
+```
+
+See [tests/README.md](tests/README.md). CI runs all of these on every pull
+request.
+
+## Security
+
+See [docs/SECURITY.md](docs/SECURITY.md) for sessions, roles, rate limits
+and the media/upload policy.
 
 ## Learn More
 

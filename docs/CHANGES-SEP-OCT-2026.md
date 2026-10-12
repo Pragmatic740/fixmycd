@@ -148,3 +148,30 @@ Added to `.env.example` on this branch. Set them in Vercel for production:
 | `EMAIL_FROM` | email sender | optional (defaults to `onboarding@resend.dev`) |
 | `NEXT_PUBLIC_BASE_URL` | links in emails | yes if email is enabled (defaults to `http://localhost:3000`) |
 | `HASH_SALT` | share-view UA hashing | recommended (has a hard-coded default) |
+
+## Status after the hardening PR (October 2026)
+
+Every ⚠️ item above was addressed, together with security issues found in
+the rest of the app. See `docs/SECURITY.md` for the resulting model and
+`git log` for one commit per change.
+
+| Area | What changed |
+| --- | --- |
+| Outage | migrations run on every Vercel build, in one transaction; a schema-drift test fails CI if `schema.ts` and `migrate` disagree |
+| Sessions | forgeable `session_user_id` cookie replaced by server-side sessions; sessions end when an account is disabled, rejected or re-roled |
+| Admin | admins can't change admins/super_admins or themselves; changes are audited; demo credentials removed from public pages |
+| Privacy | no emails, expert ids or reporter ids in public responses; hidden content and disabled users' content not served |
+| Input | zod validation on every route, generic 500s, rate limits on login/signup/reports/comments/uploads/geocode/PDF |
+| XSS / injection | map popups without `innerHTML`; escaped email templates; CSV formula neutralization; delimited AI prompt |
+| SSRF / uploads | media URL allowlist, PDF image fetch hardened, uploads sniffed by magic bytes |
+| Guest mode (#8) | upvote visible again, sign-in returns to the page, guest-only controls hidden |
+| Signup approval (#9) | pending screen, decision emails, admin filters/badges/audit |
+| Endorsements (#10) | edit/remove own, average and count on cards and filters, author notified |
+| PDF (#11) | accented text kept, wrapping by width, status notes, report link, UTC dates |
+| Notifications (#11) | profile opt-out, signed unsubscribe link, emails after the response, unread badge, paging, beta form and launch email |
+| Feed filters (#12) | validated params, exact radius, inclusive end date, severity range, debounced search, server-side "Nearby" |
+| Geocoding (#2, #7) | Census first for US points again, 2-letter states, caching and throttling, address search, county field |
+| EXIF / recording (#3, #4) | location suggestion instead of silent pin moves, capture time, Safari-compatible recording, device release, limits |
+| PWA (#13, #14) | no caching of signed-in pages, versioned cache, offline page, PNG icons, install button |
+| Share views (#15) | per-visitor de-duplication incl. missing user agent, bots/owner skipped, real referrer, expiry shown |
+| Seed (#16) | unchanged on purpose; a golden snapshot test guarantees seed output stays the same |

@@ -115,9 +115,15 @@ it once by hand against the production database:
 DATABASE_URL="<production connection string>" npm run db:migrate
 ```
 
-## Follow-ups
+## Follow-ups (done in the hardening PR)
 
-- Other API routes still return `error.message` to clients on 500 (e.g. endorsements,
-  beta-subscribe, review, admin routes). Same leak, lower exposure.
-- Consider a check in CI that runs `migrate.ts` against a throwaway Postgres and then
-  hits `/api/auth/login`. That would have caught this before merge.
+- Every API route now returns a generic 500 and logs the cause
+  (`serverError()` in `src/lib/http.ts`).
+- `tests/integration/migrations.test.ts` fails CI if any column declared
+  in `src/db/schema.ts` is not created by the migrations, and checks that
+  a July-2026 database upgrades cleanly. CI also runs the full test suite
+  against Postgres on every pull request.
+- Migrations run inside one transaction, so a failure can't leave the
+  schema half-applied.
+- The session lookup selects explicit columns, so adding a column can no
+  longer break every signed-in request.
