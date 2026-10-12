@@ -92,11 +92,16 @@ export default function AnalyticsContent() {
   const [reporters, setReporters] = useState<ReporterStats[]>([]);
   const [quality, setQuality] = useState<DataQualityIssue[]>([]);
   const [table, setTable] = useState<{ total: number; rows: Record<string, unknown>[] }>({ total: 0, rows: [] });
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filtersHydrated, setFiltersHydrated] = useState(false);
-
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Filters start from the URL so shared/bookmarked dashboards open as saved.
+  const [filters, setFilters] = useState(() => {
+    const next = { ...DEFAULT_FILTERS };
+    searchParams.forEach((v, k) => {
+      if (k in next) (next as Record<string, string>)[k] = v;
+    });
+    return next;
+  });
+  const filtersHydrated = true;
   const [mapAutoUpdate, setMapAutoUpdate] = useState(false);
   const [latestMapBounds, setLatestMapBounds] = useState<{
     west: number;
@@ -104,16 +109,6 @@ export default function AnalyticsContent() {
     east: number;
     north: number;
   } | null>(null);
-
-  useEffect(() => {
-    const next = { ...DEFAULT_FILTERS };
-    searchParams.forEach((v, k) => {
-      if (k in next) (next as Record<string, string>)[k] = v;
-    });
-    setFilters(next);
-    setFiltersHydrated(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once from URL
-  }, []);
 
   const applyMapExtent = useCallback(
     (bounds: { west: number; south: number; east: number; north: number }) => {
@@ -168,48 +163,56 @@ export default function AnalyticsContent() {
       .catch(() => setAuthorized(false));
   }, []);
 
-  const load = useCallback(async () => {
-    if (!authorized) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [sum, br, ts, sc, mp, users, ql, reps] = await Promise.all([
-        fetch(`/api/admin/analytics/summary?${queryString}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/breakdowns?${queryString}&groupBy=${debounced.groupBy || 'infrastructureClass'}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/timeseries?${queryString}&bucket=${debounced.bucket || 'month'}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/scatter?${queryString}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/map?${queryString}&mapLevel=${debounced.mapLevel || 'state'}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/users?${queryString}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/quality?${queryString}`).then((r) => r.json()),
-        fetch(`/api/admin/analytics/reports?${queryString}&limit=25`).then((r) => r.json()),
-      ]);
-
-      if (sum.error) throw new Error(sum.error);
-      setSummary(sum.data);
-      setBreakdowns(br.data || []);
-      setTimeseries(ts.data || []);
-      setScatter(sc.data || []);
-      setMapPoints(mp.data?.points || []);
-      setMapAreas(mp.data?.areas || []);
-      setReporters(users.data || []);
-      setQuality(ql.data || []);
-      setTable(reps.data || { total: 0, rows: [] });
-
-      // Boundaries for choropleth (US mainland rough bbox default)
-      const boundRes = await fetch(
-        `/api/admin/analytics/boundaries?${queryString}&mapLevel=${debounced.mapLevel || 'state'}&west=-125&south=24&east=-66&north=50`
-      ).then((r) => r.json());
-      setBoundaries(boundRes.data || null);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load analytics');
-    } finally {
-      setLoading(false);
-    }
-  }, [authorized, queryString, debounced.groupBy, debounced.bucket, debounced.mapLevel]);
+  // One request set per filter/view combination; "loading" means the last
+  // completed set doesn't match the current one.
+  const requestKey = `${queryString}|${debounced.groupBy}|${debounced.bucket}|${debounced.mapLevel}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = !!authorized && loadedKey !== requestKey;
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!authorized) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [sum, br, ts, sc, mp, users, ql, reps] = await Promise.all([
+          fetch(`/api/admin/analytics/summary?${queryString}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/breakdowns?${queryString}&groupBy=${debounced.groupBy || 'infrastructureClass'}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/timeseries?${queryString}&bucket=${debounced.bucket || 'month'}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/scatter?${queryString}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/map?${queryString}&mapLevel=${debounced.mapLevel || 'state'}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/users?${queryString}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/quality?${queryString}`).then((r) => r.json()),
+          fetch(`/api/admin/analytics/reports?${queryString}&limit=25`).then((r) => r.json()),
+        ]);
+
+        if (cancelled) return;
+        if (sum.error) throw new Error(sum.error);
+        setError(null);
+        setSummary(sum.data);
+        setBreakdowns(br.data || []);
+        setTimeseries(ts.data || []);
+        setScatter(sc.data || []);
+        setMapPoints(mp.data?.points || []);
+        setMapAreas(mp.data?.areas || []);
+        setReporters(users.data || []);
+        setQuality(ql.data || []);
+        setTable(reps.data || { total: 0, rows: [] });
+
+        // Boundaries for choropleth (US mainland rough bbox default)
+        const boundRes = await fetch(
+          `/api/admin/analytics/boundaries?${queryString}&mapLevel=${debounced.mapLevel || 'state'}&west=-125&south=24&east=-66&north=50`
+        ).then((r) => r.json());
+        if (!cancelled) setBoundaries(boundRes.data || null);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load analytics');
+      } finally {
+        if (!cancelled) setLoadedKey(requestKey);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authorized, requestKey, queryString, debounced.groupBy, debounced.bucket, debounced.mapLevel]);
 
   const setFilter = (key: string, value: string) => setFilters((prev) => ({ ...prev, [key]: value }));
 

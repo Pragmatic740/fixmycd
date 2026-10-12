@@ -77,9 +77,21 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
   }, []);
 
   useEffect(() => {
-    loadViews();
-    loadShares();
-  }, [loadViews, loadShares]);
+    let cancelled = false;
+    Promise.all([
+      fetch('/api/admin/analytics/views').then((r) => r.json()),
+      fetch('/api/admin/analytics/shares').then((r) => r.json()),
+    ])
+      .then(([viewData, shareData]) => {
+        if (cancelled) return;
+        if (Array.isArray(viewData)) setViews(viewData);
+        if (Array.isArray(shareData)) setShares(shareData);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectedView = views.find((v) => v.id === selectedViewId);
 
@@ -474,7 +486,9 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
             />
             Stock photos when missing
           </label>
-          <a className="btn-secondary btn-sm" href="/api/admin/analytics/import-csv">
+          {/* A file download from an API route, not page navigation. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a className="btn-secondary btn-sm" href="/api/admin/analytics/import-csv" download>
             Download template
           </a>
           <label className="btn-primary btn-sm file-btn">
