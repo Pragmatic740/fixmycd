@@ -3,6 +3,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import type { ReportListItem } from '../lib/types';
+import { formatRelativeTime, handleFor } from '../lib/utils';
+import { loginUrlFor } from '../lib/redirect';
+import { useCurrentUser } from './CurrentUserContext';
+import { usePathname } from 'next/navigation';
 import ShareSheet from './ShareSheet';
 
 const UpvoteIcon = ({ filled }: { filled?: boolean }) => (
@@ -34,18 +38,6 @@ function getStatusClass(status: string) {
   }
 }
 
-function relativeTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'now';
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
 function severityLabel(severity: number | null) {
   if (!severity) return null;
   if (severity >= 4) return { label: 'Critical', className: 'sev-high' };
@@ -55,6 +47,7 @@ function severityLabel(severity: number | null) {
 
 interface ReportCardProps {
   report: ReportListItem;
+  /** Defaults to the signed-in state from CurrentUserProvider. */
   isAuthenticated?: boolean;
   onUpvoteToggle?: (reportId: string, upvoted: boolean) => void;
   style?: React.CSSProperties;
@@ -62,11 +55,15 @@ interface ReportCardProps {
 
 export default function ReportCard({
   report,
-  isAuthenticated = false,
+  isAuthenticated: isAuthenticatedProp,
   onUpvoteToggle,
   style,
 }: ReportCardProps) {
+  const { user } = useCurrentUser();
+  const pathname = usePathname();
+  const isAuthenticated = isAuthenticatedProp ?? !!user;
   const [bump, setBump] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const sev = severityLabel(report.severity);
 
@@ -74,18 +71,23 @@ export default function ReportCard({
     e.preventDefault();
     e.stopPropagation();
     if (!isAuthenticated) {
-      // Optional: redirect to login or show a prompt
-      window.location.href = `/login?redirect=/dashboard`;
+      window.location.href = loginUrlFor(pathname || '/dashboard');
       return;
     }
-    const method = report.userHasUpvoted ? 'DELETE' : 'POST';
-    const res = await fetch(`/api/reports/${report.id}/upvote`, { method });
-    if (res.ok && onUpvoteToggle) {
-      onUpvoteToggle(report.id, !report.userHasUpvoted);
-      if (!report.userHasUpvoted) {
-        setBump(true);
-        setTimeout(() => setBump(false), 350);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const method = report.userHasUpvoted ? 'DELETE' : 'POST';
+      const res = await fetch(`/api/reports/${encodeURIComponent(report.id)}/upvote`, { method });
+      if (res.ok && onUpvoteToggle) {
+        onUpvoteToggle(report.id, !report.userHasUpvoted);
+        if (!report.userHasUpvoted) {
+          setBump(true);
+          setTimeout(() => setBump(false), 350);
+        }
       }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -107,10 +109,10 @@ export default function ReportCard({
             <Link href={`/dashboard/u/${report.submitterId}`} className="display-name" onClick={(e) => e.stopPropagation()}>
               {report.userDisplayName || 'Anonymous'}
             </Link>
-            <span className="handle">@{report.userEmail ? report.userEmail.split('@')[0] : 'citizen'}</span>
+            <span className="handle">@{handleFor(report.userDisplayName)}</span>
             <span className="dot-sep">·</span>
-            <time className="report-timestamp" dateTime={report.createdAt}>
-              {relativeTime(report.createdAt)}
+            <time className="report-timestamp" dateTime={report.createdAt} title={new Date(report.createdAt).toLocaleString()}>
+              {formatRelativeTime(report.createdAt, { compact: true })}
             </time>
           </div>
         </div>
@@ -146,17 +148,26 @@ export default function ReportCard({
         )}
 
         <div className="report-actions">
-          {isAuthenticated && (
-            <button
-              type="button"
-              className={`action-btn action-upvote ${report.userHasUpvoted ? 'action-btn-active' : ''} ${bump ? 'action-bump' : ''}`}
-              onClick={handleUpvote}
-              aria-label="Upvote"
+          <button
+            type="button"
+            className={`action-btn action-upvote ${report.userHasUpvoted ? 'action-btn-active' : ''} ${bump ? 'action-bump' : ''}`}
+            onClick={handleUpvote}
+            disabled={busy}
+            aria-pressed={report.userHasUpvoted}
+            aria-label={isAuthenticated ? 'Upvote' : 'Sign in to upvote'}
+            title={isAuthenticated ? undefined : 'Sign in to upvote'}
+          >
+            <UpvoteIcon filled={report.userHasUpvoted} />
+            <span>{report.upvoteCount}</span>
+          </button>
+          {report.endorsementCount ? (
+            <span
+              className="action-btn action-endorsed"
+              title={`${report.endorsementCount} expert endorsement${report.endorsementCount === 1 ? '' : 's'}, average severity ${report.endorsementAverage ?? '–'}`}
             >
-              <UpvoteIcon filled={report.userHasUpvoted} />
-              <span>{report.upvoteCount}</span>
-            </button>
-          )}
+              ✓ <span>Expert {report.endorsementAverage ?? ''}</span>
+            </span>
+          ) : null}
           <Link href={`/dashboard/reports/${report.id}`} className="action-btn action-comment">
             <CommentIcon />
             <span>{report.commentCount}</span>

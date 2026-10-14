@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { reports, users } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { serverError } from '@/lib/http';
 
 export async function GET(
   _request: Request,
@@ -46,7 +47,6 @@ export async function GET(
       createdAt: report.createdAt.toISOString(),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch report';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'public/reports GET');
   }
 }

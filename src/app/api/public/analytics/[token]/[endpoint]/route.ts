@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { shareViewEvents } from '@/db/schema';
-import { eq, and, gt } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import {
   getAnalyticsSummary,
@@ -13,10 +12,61 @@ import {
   getAnalyticsReports,
   reportsToCsv,
   sanitizeAnalyticsFilters,
+  toPublicReportRows,
 } from '@/lib/analytics';
+import { serverError } from '@/lib/http';
 import { resolveShareToken } from '@/lib/analytics-share';
-import { hashUserAgent, extractReferrer } from '@/lib/hashing';
+import { hashUserAgent, isLikelyBot, visitorHash } from '@/lib/hashing';
+import { getSessionUser } from '@/lib/auth';
+import { clientIp } from '@/lib/http';
 import type { AnalyticsFilters } from '@/lib/analytics-types';
+
+const VIEW_DEDUPE_WINDOW = '1 hour';
+
+/** Hostname the viewer came from, as reported by the page (?ref=), never our own domain. */
+function externalReferrer(request: Request): string | null {
+  const ref = new URL(request.url).searchParams.get('ref');
+  if (!ref || ref.length > 253 || !/^[a-z0-9.-]+$/i.test(ref)) return null;
+  const own = new URL(request.url).hostname;
+  return ref.toLowerCase() === own.toLowerCase() ? null : ref.toLowerCase();
+}
+
+async function recordShareView(request: Request, share: { id: string; createdBy: string }): Promise<void> {
+  try {
+    const userAgent = request.headers.get('user-agent');
+    if (isLikelyBot(userAgent)) return;
+
+    // The admin who created the link opening it is not a "view".
+    const viewer = await getSessionUser();
+    if (viewer && viewer.id === share.createdBy) return;
+
+    const visitor = visitorHash(clientIp(request), userAgent);
+    // One statement: insert only if this visitor has not viewed the link in the last hour.
+    await db.execute(sql`
+      INSERT INTO share_view_events (id, token_id, viewed_at, referrer, user_agent_hash, visitor_hash)
+      SELECT ${crypto.randomUUID()}, ${share.id}, now(), ${externalReferrer(request)}, ${hashUserAgent(userAgent)}, ${visitor}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM share_view_events
+        WHERE token_id = ${share.id} AND visitor_hash = ${visitor}
+          AND viewed_at > now() - ${VIEW_DEDUPE_WINDOW}::interval
+      )
+    `);
+  } catch (err) {
+    console.error('View tracking failed:', err);
+  }
+}
+
+/** Anonymous viewers can export at most this many rows per CSV. */
+const PUBLIC_CSV_LIMIT = 1000;
+
+/** Filters shown to anonymous viewers: never who reported what. */
+function publicFilters(filters: AnalyticsFilters): Partial<AnalyticsFilters> {
+  const { reporterId: _id, reporterName: _name, ...rest } = filters as AnalyticsFilters & {
+    reporterId?: unknown;
+    reporterName?: unknown;
+  };
+  return rest;
+}
 
 function optionalParamNumber(searchParams: URLSearchParams, key: string): number | undefined {
   const v = searchParams.get(key);
@@ -36,42 +86,9 @@ export async function GET(
       return NextResponse.json({ error: 'Share link invalid or expired' }, { status: 404 });
     }
 
-    // ✅ W3-3: Log view (only for 'summary' endpoint to avoid double-counting)
-    if (endpoint === 'summary' && share.id) {
-      try {
-        const userAgent = request.headers.get('user-agent');
-        const referrer = request.headers.get('referer');
-        const uaHash = hashUserAgent(userAgent);
-
-        // Dedupe: skip if same UA viewed this token in last hour
-        const DEDUPE_VIEW_WINDOW_IN_MS = 60 * 60 * 1000;
-        const oneHourAgo = new Date(Date.now() - DEDUPE_VIEW_WINDOW_IN_MS);
-        const recent = await db
-          .select({ id: shareViewEvents.id })
-          .from(shareViewEvents)
-          .where(
-            and(
-              eq(shareViewEvents.tokenId, share.id),
-              uaHash
-                ? eq(shareViewEvents.userAgentHash, uaHash)
-                : eq(shareViewEvents.userAgentHash, ''),
-              gt(shareViewEvents.viewedAt, oneHourAgo)
-            )
-          )
-          .limit(1);
-
-        if (recent.length === 0) {
-          await db.insert(shareViewEvents).values({
-            id: crypto.randomUUID(),
-            tokenId: share.id,
-            referrer: extractReferrer(referrer),
-            userAgentHash: uaHash,
-            viewedAt: new Date(),
-          });
-        }
-      } catch (err) {
-        console.error('View tracking failed:', err);
-      }
+    // Count a view once per visitor per hour (the dashboard loads 'summary' once).
+    if (endpoint === 'summary') {
+      await recordShareView(request, share);
     }
 
     const { searchParams } = new URL(request.url);
@@ -110,8 +127,8 @@ export async function GET(
         });
       case 'reports': {
         if (searchParams.get('format') === 'csv') {
-          const result = await getAnalyticsReports({ ...filters, limit: 5000, offset: 0 });
-          const csv = reportsToCsv(result.rows);
+          const result = await getAnalyticsReports({ ...filters, limit: PUBLIC_CSV_LIMIT, offset: 0 });
+          const csv = reportsToCsv(toPublicReportRows(result.rows));
           return new NextResponse(csv, {
             headers: {
               'Content-Type': 'text/csv; charset=utf-8',
@@ -119,16 +136,15 @@ export async function GET(
             },
           });
         }
-        return NextResponse.json({ data: await getAnalyticsReports(filters), meta });
+        const result = await getAnalyticsReports(filters);
+        return NextResponse.json({ data: { ...result, rows: toPublicReportRows(result.rows) }, meta });
       }
       case 'meta':
-        return NextResponse.json({ data: { label: share.label, filters: share.filters }, meta });
+        return NextResponse.json({ data: { label: share.label, filters: publicFilters(share.filters) }, meta });
       default:
         return NextResponse.json({ error: `Unknown endpoint: ${endpoint}` }, { status: 404 });
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Shared analytics failed';
-    console.error('Public analytics error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'public analytics');
   }
 }

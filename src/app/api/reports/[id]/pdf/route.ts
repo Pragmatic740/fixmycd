@@ -7,69 +7,61 @@ import {
   endorsements,
   comments,
   reportStatusHistory,
+  upvotes,
 } from '@/db/schema';
-import { eq, desc, and } from 'drizzle-orm';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { PDFDocument, rgb, StandardFonts, type PDFFont } from 'pdf-lib';
+import { clientIp, notFound, serverError } from '@/lib/http';
+import { fetchImageForEmbedding } from '@/lib/media-fetch';
+import { formatPdfDate, toWinAnsi, wrapText } from '@/lib/pdf-text';
+import { enforceRateLimit } from '@/lib/rate-limit';
 
-async function fetchImageBytes(
-  url: string
-): Promise<{ bytes: ArrayBuffer; type: 'jpg' | 'png' } | null> {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const contentType = res.headers.get('content-type') || '';
-    const buffer = await res.arrayBuffer();
-    if (contentType.includes('png')) return { bytes: buffer, type: 'png' };
-    return { bytes: buffer, type: 'jpg' };
-  } catch {
-    return null;
-  }
-}
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const PAGE: [number, number] = [612, 792];
+const MARGIN = 50;
+const BOTTOM = 60;
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const limited = await enforceRateLimit('pdf', clientIp(request));
+    if (limited) return limited;
+
     const { id } = await params;
 
-    const reportRows = await db
+    const [report] = await db
       .select()
       .from(reports)
-      .where(eq(reports.id, id))
+      .where(and(eq(reports.id, id), eq(reports.isHidden, false)))
       .limit(1);
+    if (!report) return notFound('Report not found');
 
-    const report = reportRows[0];
-    if (!report || report.isHidden) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 });
-    }
-
-    const [locationRows, submitterRows, endorsementRows, commentRows, historyRows] =
+    const [locationRows, submitterRows, endorsementRows, commentRows, historyRows, upvoteRows] =
       await Promise.all([
         db.select().from(reportLocations).where(eq(reportLocations.reportId, id)).limit(1),
-        db.select().from(users).where(eq(users.id, report.submitterId)).limit(1),
+        db.select({ displayName: users.displayName }).from(users).where(eq(users.id, report.submitterId)).limit(1),
         db
           .select({
-            id: endorsements.id,
             severityLevel: endorsements.severityLevel,
             note: endorsements.note,
             createdAt: endorsements.createdAt,
             expertName: users.displayName,
           })
           .from(endorsements)
-          .leftJoin(users, eq(endorsements.expertUserId, users.id))
-          .where(eq(endorsements.reportId, id))
+          .innerJoin(users, eq(endorsements.expertUserId, users.id))
+          .where(and(eq(endorsements.reportId, id), isNull(users.disabledAt)))
           .orderBy(desc(endorsements.createdAt)),
         db
           .select({
-            id: comments.id,
             body: comments.body,
             createdAt: comments.createdAt,
             userName: users.displayName,
           })
           .from(comments)
-          .leftJoin(users, eq(comments.userId, users.id))
-          .where(and(eq(comments.reportId, id), eq(comments.isHidden, false)))
+          .innerJoin(users, eq(comments.userId, users.id))
+          .where(and(eq(comments.reportId, id), eq(comments.isHidden, false), isNull(users.disabledAt)))
           .orderBy(desc(comments.createdAt))
           .limit(10),
         db
@@ -77,247 +69,172 @@ export async function GET(
           .from(reportStatusHistory)
           .where(eq(reportStatusHistory.reportId, id))
           .orderBy(desc(reportStatusHistory.createdAt))
-          .limit(10),
+          .limit(20),
+        db.select({ count: sql<number>`cast(count(*) as int)` }).from(upvotes).where(eq(upvotes.reportId, id)),
       ]);
 
     const location = locationRows[0];
     const submitter = submitterRows[0];
 
     const pdfDoc = await PDFDocument.create();
+    pdfDoc.setTitle(toWinAnsi(`Incident ${report.referenceNo}: ${report.title}`));
+    pdfDoc.setProducer('FixMyDistrict');
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const sanitize = (text: string): string =>
-      text
-        .replace(/[^\x00-\x7F]/g, '')
-        .replace(/[—–]/g, '-')
-        .replace(/[""]/g, '"')
-        .replace(/['']/g, "'")
-        .replace(/…/g, '...');
-
-    let page = pdfDoc.addPage([612, 792]);
+    let page = pdfDoc.addPage(PAGE);
     const { width, height } = page.getSize();
-    let y = height - 50;
+    const textWidth = width - MARGIN * 2;
+    let y = height - MARGIN;
 
-    const writeLine = (
-      text: string,
-      options?: { bold?: boolean; size?: number; color?: [number, number, number] }
-    ) => {
-      const size = options?.size || 11;
-      const f = options?.bold ? boldFont : font;
-      const c = options?.color || [0, 0, 0];
-
-      // Add new page if we're out of space
-      if (y < 60) {
-        page = pdfDoc.addPage([612, 792]);
-        y = height - 50;
+    const ensureSpace = (needed: number) => {
+      if (y - needed < BOTTOM) {
+        page = pdfDoc.addPage(PAGE);
+        y = height - MARGIN;
       }
-
-      page.drawText(sanitize(text), {
-        x: 50,
-        y,
-        size,
-        font: f,
-        color: rgb(c[0], c[1], c[2]),
-      });
-      y -= size + 6;
     };
 
-    const writeDivider = () => {
+    type LineOptions = { bold?: boolean; size?: number; color?: [number, number, number]; indent?: number };
+
+    /** Draw text, wrapping by measured width onto as many lines/pages as needed. */
+    const write = (text: string, options: LineOptions = {}) => {
+      const size = options.size ?? 11;
+      const f: PDFFont = options.bold ? boldFont : font;
+      const [r, g, b] = options.color ?? [0, 0, 0];
+      const indent = options.indent ?? 0;
+      for (const line of wrapText(text, f, size, textWidth - indent)) {
+        ensureSpace(size + 6);
+        if (line) page.drawText(line, { x: MARGIN + indent, y, size, font: f, color: rgb(r, g, b) });
+        y -= size + 6;
+      }
+    };
+
+    const section = (title: string) => {
+      y -= 4;
+      ensureSpace(40);
       page.drawLine({
-        start: { x: 50, y },
-        end: { x: width - 50, y },
+        start: { x: MARGIN, y },
+        end: { x: width - MARGIN, y },
         thickness: 0.5,
         color: rgb(0.7, 0.7, 0.7),
       });
-      y -= 12;
+      y -= 16;
+      write(title, { bold: true, size: 12 });
     };
 
-    writeLine('FixMyDistrict - Incident Report', { bold: true, size: 18 });
-    writeLine(`Reference: ${report.referenceNo}`, { size: 12, color: [0.3, 0.3, 0.3] });
-    y -= 8;
-    writeDivider();
+    const reportUrl = `${BASE_URL}/r/${encodeURIComponent(report.id)}`;
 
-    writeLine(report.title, { bold: true, size: 14 });
-    y -= 4;
+    write('FixMyDistrict - Incident Report', { bold: true, size: 18 });
+    write(`Reference: ${report.referenceNo}`, { size: 12, color: [0.3, 0.3, 0.3] });
+    write(`Online: ${reportUrl}`, { size: 9, color: [0.2, 0.3, 0.8] });
+    y -= 6;
 
-    writeLine(`Status: ${report.status.replace(/_/g, ' ')}`);
-    writeLine(`Severity: ${report.severity || 'N/A'}`);
-    writeLine(
-      `Category: ${report.category || 'N/A'}${report.subcategory ? ' / ' + report.subcategory : ''}`
-    );
-    writeLine(`Failure Type: ${report.failureType || 'N/A'}`);
-    writeLine(`Reported by: ${submitter?.displayName || 'Anonymous'}`);
-    writeLine(`Reported on: ${new Date(report.createdAt).toLocaleDateString()}`);
-    y -= 8;
+    section(report.title);
+    write(`Status: ${report.status.replace(/_/g, ' ')}`);
+    write(`Severity: ${report.severity ?? 'N/A'}`);
+    write(`Category: ${report.category || 'N/A'}${report.subcategory ? ` / ${report.subcategory}` : ''}`);
+    write(`Failure Type: ${report.failureType || 'N/A'}`);
+    write(`Reported by: ${submitter?.displayName || 'Anonymous'}`);
+    write(`Reported on: ${formatPdfDate(report.createdAt, true)}`);
+    if (report.occurredAt) write(`Observed on: ${formatPdfDate(report.occurredAt, true)}`);
+    write(`Community upvotes: ${upvoteRows[0]?.count ?? 0}`);
 
-    // ✅ PHOTO EVIDENCE
     if (report.imageUrl) {
-      writeDivider();
-      writeLine('Photo Evidence', { bold: true, size: 12 });
-      try {
-        const img = await fetchImageBytes(report.imageUrl);
-        if (img) {
-          const embeddedImage =
-            img.type === 'png'
-              ? await pdfDoc.embedPng(img.bytes)
-              : await pdfDoc.embedJpg(img.bytes);
-
-          const maxWidth = width - 100;
-          const maxHeight = 300;
-          const scale = Math.min(
-            maxWidth / embeddedImage.width,
-            maxHeight / embeddedImage.height,
-            1
-          );
-
-          const imgWidth = embeddedImage.width * scale;
-          const imgHeight = embeddedImage.height * scale;
-
-          if (y - imgHeight < 60) {
-            page = pdfDoc.addPage([612, 792]);
-            y = height - 50;
-          }
-
-          page.drawImage(embeddedImage, {
-            x: 50,
-            y: y - imgHeight,
-            width: imgWidth,
-            height: imgHeight,
-          });
-
-          y -= imgHeight + 12;
+      const img = await fetchImageForEmbedding(report.imageUrl);
+      section('Photo Evidence');
+      if (img) {
+        try {
+          const embedded = img.type === 'png' ? await pdfDoc.embedPng(img.bytes) : await pdfDoc.embedJpg(img.bytes);
+          const scale = Math.min(textWidth / embedded.width, 300 / embedded.height, 1);
+          const w = embedded.width * scale;
+          const h = embedded.height * scale;
+          ensureSpace(h + 12);
+          page.drawImage(embedded, { x: MARGIN, y: y - h, width: w, height: h });
+          y -= h + 12;
+        } catch (err) {
+          console.error('Failed to embed photo:', err);
+          write('Photo could not be embedded; view it online.', { size: 10, color: [0.4, 0.4, 0.4] });
         }
-      } catch (err) {
-        console.error('Failed to embed photo:', err);
+      } else {
+        write('Photo available online (format cannot be embedded).', { size: 10, color: [0.4, 0.4, 0.4] });
       }
     }
 
-    // ✅ VIDEO / AUDIO LINKS
     if (report.videoUrl || report.audioUrl) {
-      writeDivider();
-      writeLine('Additional Media', { bold: true, size: 12 });
-      if (report.videoUrl)
-        writeLine(`Video: ${report.videoUrl}`, { size: 9, color: [0.3, 0.3, 0.8] });
-      if (report.audioUrl)
-        writeLine(`Audio: ${report.audioUrl}`, { size: 9, color: [0.3, 0.3, 0.8] });
-      y -= 8;
+      section('Additional Media');
+      if (report.videoUrl) write(report.videoUrl.startsWith('data:') ? 'Video: attached (view online)' : `Video: ${report.videoUrl}`, { size: 9, color: [0.3, 0.3, 0.8] });
+      if (report.audioUrl) write(report.audioUrl.startsWith('data:') ? 'Audio: attached (view online)' : `Audio: ${report.audioUrl}`, { size: 9, color: [0.3, 0.3, 0.8] });
     }
 
-    // LOCATION
-    writeDivider();
-    writeLine('Location', { bold: true, size: 12 });
-    writeLine(`Coordinates: ${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}`);
+    section('Location');
+    write(`Coordinates: ${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}`);
     if (location) {
-      if (location.addressLine) writeLine(`Address: ${location.addressLine}`);
-      if (location.city) writeLine(`City: ${location.city}`);
-      if (location.stateProvince) writeLine(`State: ${location.stateProvince}`);
-      if (location.postalCode) writeLine(`ZIP: ${location.postalCode}`);
-      if (location.county) writeLine(`County: ${location.county}`);
-      if (location.congressionalDistrict) {
-        writeLine(`Congressional District: ${location.congressionalDistrict}`);
+      if (location.addressLine) write(`Address: ${location.addressLine}`);
+      if (location.city) write(`City: ${location.city}`);
+      if (location.stateProvince) write(`State: ${location.stateProvince}`);
+      if (location.postalCode) write(`ZIP: ${location.postalCode}`);
+      if (location.county) write(`County: ${location.county}`);
+      if (location.congressionalDistrict) write(`Congressional District: ${location.congressionalDistrict}`);
+    }
+
+    section('Description');
+    write(report.description || 'No description');
+
+    if (report.aiSummary) {
+      section('AI Summary');
+      write(report.aiSummary, { color: [0.4, 0.4, 0.4] });
+    }
+
+    if (endorsementRows.length > 0) {
+      const avg = endorsementRows.reduce((s, e) => s + e.severityLevel, 0) / endorsementRows.length;
+      section(`Expert Endorsements (${endorsementRows.length}, average severity ${avg.toFixed(1)})`);
+      for (const e of endorsementRows) {
+        write(`- ${e.expertName || 'Expert'}: severity ${e.severityLevel} (${formatPdfDate(e.createdAt)})`, { size: 10 });
+        if (e.note) write(e.note, { size: 9, color: [0.4, 0.4, 0.4], indent: 12 });
       }
     }
-    y -= 8;
 
-    // DESCRIPTION
-    writeDivider();
-    writeLine('Description', { bold: true, size: 12 });
-    const descLines = wrapText(report.description || 'No description', 90);
-    descLines.forEach((line) => writeLine(line));
-    y -= 8;
-
-    // AI SUMMARY
-    if (report.aiSummary) {
-      writeDivider();
-      writeLine('AI Summary', { bold: true, size: 12 });
-      const summaryLines = wrapText(report.aiSummary, 90);
-      summaryLines.forEach((line) => writeLine(line, { color: [0.4, 0.4, 0.4] }));
-      y -= 8;
-    }
-
-    // ENDORSEMENTS
-    if (endorsementRows.length > 0) {
-      writeDivider();
-      writeLine(`Expert Endorsements (${endorsementRows.length})`, { bold: true, size: 12 });
-      endorsementRows.forEach((e) => {
-        writeLine(`- ${e.expertName || 'Expert'} - Severity ${e.severityLevel}`, { size: 10 });
-        if (e.note) {
-          const noteLines = wrapText(e.note, 85);
-          noteLines.forEach((line) => writeLine(`  ${line}`, { size: 9, color: [0.4, 0.4, 0.4] }));
-        }
-      });
-      y -= 8;
-    }
-
-    // STATUS TIMELINE
     if (historyRows.length > 0) {
-      writeDivider();
-      writeLine('Status Timeline', { bold: true, size: 12 });
-      historyRows.forEach((h) => {
-        const date = new Date(h.createdAt).toLocaleDateString();
-        writeLine(`${date}: ${h.fromStatus || 'new'} -> ${h.toStatus}`, { size: 10 });
-      });
-      y -= 8;
+      section('Status Timeline');
+      for (const h of [...historyRows].reverse()) {
+        write(`${formatPdfDate(h.createdAt, true)}: ${h.fromStatus || 'new'} -> ${h.toStatus}`, { size: 10 });
+        if (h.note) write(h.note, { size: 9, color: [0.4, 0.4, 0.4], indent: 12 });
+      }
     }
 
-    // COMMENTS
     if (commentRows.length > 0) {
-      writeDivider();
-      writeLine(`Comments (showing ${commentRows.length})`, { bold: true, size: 12 });
-      commentRows.forEach((c) => {
-        writeLine(
-          `${c.userName || 'User'} - ${new Date(c.createdAt).toLocaleDateString()}`,
-          { size: 10, bold: true }
-        );
-        const bodyLines = wrapText(c.body, 85);
-        bodyLines.slice(0, 2).forEach((line) => writeLine(`  ${line}`, { size: 9 }));
+      section(`Comments (latest ${commentRows.length})`);
+      for (const c of commentRows) {
+        write(`${c.userName || 'User'} - ${formatPdfDate(c.createdAt)}`, { size: 10, bold: true });
+        write(c.body, { size: 9, indent: 12 });
         y -= 4;
-      });
+      }
     }
 
-    // FOOTER ON ALL PAGES
+    const generated = formatPdfDate(new Date(), true);
     const pages = pdfDoc.getPages();
     pages.forEach((p, i) => {
-      p.drawText(
-        `Generated ${new Date().toISOString()} - Page ${i + 1} of ${pages.length}`,
-        {
-          x: 50,
-          y: 30,
-          size: 8,
-          font,
-          color: rgb(0.5, 0.5, 0.5),
-        }
-      );
+      p.drawText(`Generated ${generated} - Page ${i + 1} of ${pages.length}`, {
+        x: MARGIN,
+        y: 30,
+        size: 8,
+        font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
     });
 
     const pdfBytes = await pdfDoc.save();
+    const filename = `incident-${report.referenceNo || id}.pdf`.replace(/[^A-Za-z0-9._-]/g, '_');
 
     return new NextResponse(pdfBytes as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="incident-${report.referenceNo || id}.pdf"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'private, max-age=300',
       },
     });
   } catch (error) {
-    console.error('PDF generation error:', error);
-    return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
+    return serverError(error, 'reports/[id]/pdf');
   }
-}
-
-function wrapText(text: string, maxChars: number): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    if ((current + ' ' + word).length > maxChars) {
-      lines.push(current.trim());
-      current = word;
-    } else {
-      current += ' ' + word;
-    }
-  }
-  if (current.trim()) lines.push(current.trim());
-  return lines;
 }

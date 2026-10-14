@@ -1,35 +1,27 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { betaSubscribers } from '@/db/schema';
-import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
+import { clientIp, parseJsonBody, serverError } from '@/lib/http';
+import { enforceRateLimit } from '@/lib/rate-limit';
+import { betaSubscribeSchema } from '@/lib/validation';
 
 export async function POST(request: Request) {
   try {
-    const { email } = await request.json();
-    if (!email || !email.includes('@')) {
-      return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
-    }
+    const limited = await enforceRateLimit('betaSubscribe', clientIp(request));
+    if (limited) return limited;
 
-    const existing = await db
-      .select()
-      .from(betaSubscribers)
-      .where(eq(betaSubscribers.email, email))
-      .limit(1);
+    const parsed = await parseJsonBody(request, betaSubscribeSchema);
+    if (!parsed.ok) return parsed.response;
 
-    if (existing.length > 0) {
-      return NextResponse.json({ success: true, message: 'Already subscribed' });
-    }
+    // Idempotent and identical response either way (doesn't reveal who signed up).
+    await db
+      .insert(betaSubscribers)
+      .values({ id: crypto.randomUUID(), email: parsed.data.email, createdAt: new Date() })
+      .onConflictDoNothing();
 
-    await db.insert(betaSubscribers).values({
-      id: crypto.randomUUID(),
-      email,
-      createdAt: new Date(),
-    });
-
-    return NextResponse.json({ success: true, message: 'Subscribed' }, { status: 201 });
+    return NextResponse.json({ success: true, message: "You're on the list! We'll email you when we launch." }, { status: 201 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to subscribe';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'beta-subscribe');
   }
 }

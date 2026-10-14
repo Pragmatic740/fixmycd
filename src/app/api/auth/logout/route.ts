@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { destroySession } from '@/lib/auth';
+import { serverError } from '@/lib/http';
 
 export async function POST() {
   try {
-    const cookieStore = await cookies();
-    cookieStore.delete('session_user_id');
+    await destroySession();
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return serverError(error, 'auth/logout');
   }
 }

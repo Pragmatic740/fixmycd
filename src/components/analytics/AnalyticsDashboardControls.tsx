@@ -20,7 +20,12 @@ interface ShareItem {
   label: string | null;
   urlPath: string;
   viewCount: number;
+  viewsLast14Days?: number;
   createdAt: string;
+  expiresAt?: string | null;
+  expired?: boolean;
+  mine?: boolean;
+  createdByName?: string | null;
   lastViewedAt: string | null;
 }
 
@@ -72,9 +77,21 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
   }, []);
 
   useEffect(() => {
-    loadViews();
-    loadShares();
-  }, [loadViews, loadShares]);
+    let cancelled = false;
+    Promise.all([
+      fetch('/api/admin/analytics/views').then((r) => r.json()),
+      fetch('/api/admin/analytics/shares').then((r) => r.json()),
+    ])
+      .then(([viewData, shareData]) => {
+        if (cancelled) return;
+        if (Array.isArray(viewData)) setViews(viewData);
+        if (Array.isArray(shareData)) setShares(shareData);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectedView = views.find((v) => v.id === selectedViewId);
 
@@ -394,24 +411,32 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
 
       {showShares && (
         <div className="analytics-shares-list">
-          <h4>My shared links</h4>
+          <h4>Shared links</h4>
           {shares.length === 0 ? (
-            <p className="analytics-hint">No shares yet. Click "Share this dashboard" to create one.</p>
+            <p className="analytics-hint">No shares yet. Click &ldquo;Share this dashboard&rdquo; to create one.</p>
           ) : (
             <ul>
               {shares.map((s) => (
                 <li key={s.id}>
                   <div>
                     <strong>{s.label || 'Untitled share'}</strong>
+                    {s.expired && <span className="share-badge share-badge-expired"> Expired</span>}
                     <span className="share-views">
                       {' '}
                       · {s.viewCount} view{s.viewCount === 1 ? '' : 's'}
+                      {s.viewsLast14Days != null && ` (${s.viewsLast14Days} in 14 days)`}
                     </span>
                     {s.lastViewedAt && (
                       <span className="analytics-hint">
                         {' '}
                         · last seen {new Date(s.lastViewedAt).toLocaleDateString()}
                       </span>
+                    )}
+                    {(s.expiresAt || (s.mine === false && s.createdByName)) && (
+                      <div className="analytics-hint">
+                        {s.mine === false && s.createdByName && <>Created by {s.createdByName}. </>}
+                        {s.expiresAt && !s.expired && <>Expires {new Date(s.expiresAt).toLocaleDateString()}.</>}
+                      </div>
                     )}
                   </div>
                   <div className="share-actions">
@@ -461,7 +486,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
             />
             Stock photos when missing
           </label>
-          <a className="btn-secondary btn-sm" href="/api/admin/analytics/import-csv">
+          {/* A file download from an API route, not page navigation. */}
+          <a className="btn-secondary btn-sm" href="/api/admin/analytics/import-csv" download>
             Download template
           </a>
           <label className="btn-primary btn-sm file-btn">

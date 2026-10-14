@@ -14,28 +14,8 @@ import type { DatePreset } from './categories';
 const OPEN_STATUSES = ['submitted', 'in_review', 'accepted', 'resubmit', 'duplicate', 'in_progress'];
 
 /** Normalize "Florida" / "fl" / "FL" → "FL" for US state filters */
-const US_STATE_NAME_TO_ABBR: Record<string, string> = {
-  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
-  colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
-  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA',
-  kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
-  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO',
-  montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
-  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
-  ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI',
-  'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT',
-  vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
-  wyoming: 'WY', 'district of columbia': 'DC', 'washington dc': 'DC', 'washington d.c.': 'DC',
-};
-
-export function normalizeStateFilter(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return trimmed;
-  const lower = trimmed.toLowerCase();
-  if (US_STATE_NAME_TO_ABBR[lower]) return US_STATE_NAME_TO_ABBR[lower];
-  if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
-  return trimmed;
-}
+export { normalizeStateFilter } from './geo/us-states';
+import { normalizeStateFilter } from './geo/us-states';
 
 function toFiniteNumber(value: unknown): number | undefined {
   if (value == null || value === '') return undefined;
@@ -746,7 +726,17 @@ export async function getReporterStats(filters: AnalyticsFilters): Promise<Repor
   const userIds = Array.from(byUser.keys());
   if (userIds.length === 0) return [];
 
-  const userRows = await db.select().from(users).where(inArray(users.id, userIds));
+  const userRows = await db
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      email: users.email,
+      role: users.role,
+      isSynthetic: users.isSynthetic,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(inArray(users.id, userIds));
   const flagRows = await db
     .select({ reporterId: flags.reporterId, count: sql<number>`cast(count(*) as int)` })
     .from(flags)
@@ -887,7 +877,25 @@ export async function getDataQuality(filters: AnalyticsFilters): Promise<DataQua
   return issues;
 }
 
-export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports>>['rows']) {
+/**
+ * Spreadsheet apps execute cells starting with = + - @ (or tab/CR) as
+ * formulas. Prefix user-controlled text so it is shown, not run.
+ */
+export function neutralizeCsvCell(value: unknown): string {
+  if (value == null) return '';
+  const s = String(value);
+  return typeof value === 'string' && /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
+type AnalyticsReportRow = Awaited<ReturnType<typeof getAnalyticsReports>>['rows'][number];
+export type PublicAnalyticsReportRow = Omit<AnalyticsReportRow, 'submitterId' | 'userEmail' | 'userRole' | 'userIsSynthetic'>;
+
+/** Rows safe for anonymous share links: no reporter ids, emails, roles or account flags. */
+export function toPublicReportRows(rows: AnalyticsReportRow[]): PublicAnalyticsReportRow[] {
+  return rows.map(({ submitterId: _s, userEmail: _e, userRole: _r, userIsSynthetic: _y, ...rest }) => rest);
+}
+
+export function reportsToCsv(rows: PublicAnalyticsReportRow[]) {
   const headers = [
     'id',
     'title',
@@ -939,10 +947,7 @@ export function reportsToCsv(rows: Awaited<ReturnType<typeof getAnalyticsReports
       r.createdAt,
       r.occurredAt,
       r.resolvedAt,
-    ].map((v) => {
-      const s = v == null ? '' : String(v);
-      return `"${s.replace(/"/g, '""')}"`;
-    });
+    ].map((v) => `"${neutralizeCsvCell(v).replace(/"/g, '""')}"`);
     lines.push(vals.join(','));
   }
   // UTF-8 BOM so Excel on Windows opens special characters correctly

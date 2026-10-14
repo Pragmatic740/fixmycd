@@ -1,9 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import exifr from 'exifr';
 import { InAppMediaRecorder } from './InAppMediaRecorder';
+import type { ResolvedLocation } from '../PinPickerMap';
+import {
+  distanceMeters,
+  extensionForMime,
+  isPlausibleGps,
+  plausibleCaptureDate,
+  toDatetimeLocal,
+} from '../../lib/media-recording';
 import {
   INFRASTRUCTURE_TAXONOMY,
   FAILURE_TYPES,
@@ -56,34 +63,76 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
   const [observationConfidence, setObservationConfidence] = useState(4);
   const [responsibleAgency, setResponsibleAgency] = useState('');
   const [assetName, setAssetName] = useState('');
-  const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 16));
-  const [gpsDetected, setGpsDetected] = useState(false);
+  const [occurredAt, setOccurredAt] = useState(() => toDatetimeLocal(new Date()));
+  const [occurredAtTouched, setOccurredAtTouched] = useState(false);
+  const [county, setCounty] = useState('');
+  const [resolveToken, setResolveToken] = useState(0);
+  const [photoGps, setPhotoGps] = useState<{ lat: number; lng: number; source: 'photo' | 'device' } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [locationNote, setLocationNote] = useState<string | null>(null);
+
+  // Free the local preview URL when it is replaced or the form closes.
+  useEffect(() => {
+    if (!imagePreview) return;
+    return () => URL.revokeObjectURL(imagePreview);
+  }, [imagePreview]);
 
   const types = infrastructureClass ? INFRASTRUCTURE_TAXONOMY[infrastructureClass] || [] : [];
   const steps = mode === 'quick' ? ['Issue', 'Location', 'Evidence'] : ['Issue', 'Location', 'Impact', 'Evidence', 'Review'];
 
   const uploadFile = async (file: File) => {
+    setUploadError(null);
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch('/api/upload', { method: 'POST', body: formData });
-    if (!res.ok) {
-      const err = await res.json();
-      alert(err.error || 'Upload failed');
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUploadError(data.error || 'Upload failed');
+        return null;
+      }
+      return data.url as string;
+    } catch {
+      setUploadError('Upload failed. Check your connection and try again.');
       return null;
     }
-    const data = await res.json();
-    return data.url as string;
   };
 
-  const readPhotoGPS = async (file: File): Promise<{ lat: number; lng: number } | null> => {
+  /** Address fields always follow the pin: replace them (stale values from an earlier pin are wrong). */
+  const applyLocation = (loc: ResolvedLocation | null) => {
+    setAddressLine(loc?.addressLine || '');
+    setCity(loc?.city || '');
+    setStateProvince(loc?.stateProvince || '');
+    setPostalCode(loc?.postalCode || '');
+    setCounty(loc?.county || '');
+    if (loc?.countryCode) setCountryCode(['US', 'ZW'].includes(loc.countryCode) ? loc.countryCode : 'OTHER');
+    setLocationNote(loc ? null : 'No address found for this spot — you can type it in.');
+  };
+
+  const movePin = (lat: number, lng: number, resolve = true) => {
+    setLatitude(parseFloat(lat.toFixed(6)));
+    setLongitude(parseFloat(lng.toFixed(6)));
+    if (resolve) setResolveToken((n) => n + 1);
+  };
+
+  /** Read GPS position and capture time from a photo (loaded on demand: exifr is large). */
+  const readPhotoMeta = async (file: File): Promise<{ lat?: number; lng?: number; takenAt?: Date | null }> => {
     try {
-      const gps = await exifr.gps(file);
-      if (!gps) return null;
-      return { lat: gps.latitude, lng: gps.longitude };
+      const { default: exifr } = await import('exifr');
+      const data = await exifr.parse(file, { gps: true, pick: ['DateTimeOriginal', 'latitude', 'longitude'] });
+      if (!data) return {};
+      return { lat: data.latitude, lng: data.longitude, takenAt: plausibleCaptureDate(data.DateTimeOriginal) };
     } catch (error) {
-      console.warn('Could not read GPS from photo:', error);
-      return null;
+      console.warn('Could not read photo metadata:', error);
+      return {};
     }
+  };
+
+  /** Offer (never force) a location from a photo or the device when it differs from the pin. */
+  const suggestLocation = (lat: number, lng: number, source: 'photo' | 'device') => {
+    const far = distanceMeters({ lat, lng }, { lat: latitude, lng: longitude }) > 50;
+    setPhotoGps(far ? { lat, lng, source } : null);
   };
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,35 +141,11 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     setUploading(true);
     setImagePreview(URL.createObjectURL(file));
     try {
-      const url = await uploadFile(file);
+      // Upload and read EXIF at the same time.
+      const [url, meta] = await Promise.all([uploadFile(file), readPhotoMeta(file)]);
       if (url) setImageUrl(url);
-
-      const gps = await readPhotoGPS(file);
-      if (gps) {
-        try {
-          const response = await fetch(`/api/geocode?lat=${gps.lat}&lng=${gps.lng}`);
-          const data = await response.json();
-          if (response.ok) {
-            setLatitude(gps.lat);
-            setLongitude(gps.lng);
-            if (data.city && data.city !== 'Unknown') setCity(data.city);
-            if (data.stateProvince && data.stateProvince !== 'Unknown') setStateProvince(data.stateProvince);
-            if (data.postalCode) setPostalCode(data.postalCode);
-            if (
-              data.county &&
-              data.county !== 'Unknown' &&
-              data.county !== 'Unknown County'
-            ) {
-              setAddressLine(prev => prev || `County: ${data.county}`);
-            }
-            setGpsDetected(true);
-          }
-        } catch (geoError) {
-          console.warn('Could not geocode GPS location:', geoError);
-        }
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
+      if (isPlausibleGps(meta.lat, meta.lng)) suggestLocation(meta.lat!, meta.lng!, 'photo');
+      if (meta.takenAt && !occurredAtTouched) setOccurredAt(toDatetimeLocal(meta.takenAt));
     } finally {
       setUploading(false);
     }
@@ -128,43 +153,46 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
 
   const handleRecordingComplete = async (blob: Blob, type: 'photo' | 'video' | 'audio') => {
     setShowRecorder(false);
-    const extension = type === 'photo' ? 'jpg' : type === 'video' ? 'webm' : 'webm';
-    const file = new File([blob], `recorded-${type}-${Date.now()}.${extension}`, {
-      type: blob.type,
-    });
+    const extension = extensionForMime(blob.type, type);
+    const file = new File([blob], `recorded-${type}-${Date.now()}.${extension}`, { type: blob.type });
     setUploading(true);
     try {
       const url = await uploadFile(file);
-      if (url) {
-        if (type === 'photo') {
-          setImageUrl(url);
-          setImagePreview(URL.createObjectURL(blob));
-        } else if (type === 'video') {
-          setVideoUrl(url);
-        } else {
-          setAudioUrl(url);
-        }
+      if (!url) return;
+      if (type === 'photo') {
+        setImageUrl(url);
+        setImagePreview(URL.createObjectURL(blob));
+        // In-app photos carry no EXIF: offer the device position instead.
+        navigator.geolocation?.getCurrentPosition(
+          (pos) => suggestLocation(pos.coords.latitude, pos.coords.longitude, 'device'),
+          () => {},
+          { maximumAge: 60_000, timeout: 10_000 }
+        );
+      } else if (type === 'video') {
+        setVideoUrl(url);
+      } else {
+        setAudioUrl(url);
       }
-    } catch (error) {
-      console.error('Failed to upload recording:', error);
     } finally {
       setUploading(false);
     }
   };
 
   const detectLocation = () => {
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => {
-        setLatitude(parseFloat(pos.coords.latitude.toFixed(6)));
-        setLongitude(parseFloat(pos.coords.longitude.toFixed(6)));
-      },
-      () => alert('Could not detect location.')
+    if (!navigator.geolocation) {
+      setLocationNote('This browser cannot share its location.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => movePin(pos.coords.latitude, pos.coords.longitude),
+      () => setLocationNote('Could not detect your location. Allow location access or click the map.'),
+      { timeout: 10_000 }
     );
   };
 
   const canProceed = () => {
     if (step === 0) return title.trim() && infrastructureClass && severity;
-    if (step === 1) return latitude != null && longitude != null;
+    if (step === 1) return Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
     return true;
   };
 
@@ -193,6 +221,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
           city,
           postalCode,
           stateProvince,
+          county,
           countryCode,
           estimatedCostLow: estimatedCostLow || undefined,
           estimatedCostHigh: estimatedCostHigh || undefined,
@@ -213,9 +242,18 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
       if (res.ok) {
         onSuccess();
       } else {
-        const data = await res.json();
-        alert(data.error || 'Failed to submit');
+        const data = await res.json().catch(() => ({}));
+        const field = data.fields ? Object.entries(data.fields)[0] : null;
+        setSubmitError(
+          res.status === 429
+            ? 'You have submitted many reports recently. Please try again later.'
+            : field
+              ? `${field[0]}: ${field[1]}`
+              : data.error || 'Failed to submit'
+        );
       }
+    } catch {
+      setSubmitError('Failed to submit. Check your connection and try again.');
     } finally {
       setSubmitting(false);
     }
@@ -376,36 +414,31 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
               <PinPickerMap
                 latitude={latitude}
                 longitude={longitude}
-                onChange={(lat, lng) => {
-                  setLatitude(lat);
-                  setLongitude(lng);
-                }}
-                onLocationChange={(location) => {
-                  if (location.city && location.city !== 'Unknown') setCity(location.city);
-                  if (location.stateProvince && location.stateProvince !== 'Unknown')
-                    setStateProvince(location.stateProvince);
-                  if (location.postalCode) setPostalCode(location.postalCode);
-                  if (
-                    location.county &&
-                    location.county !== 'Unknown' &&
-                    location.county !== 'Unknown County'
-                  ) {
-                    setAddressLine(prev => prev || `County: ${location.county}`);
-                  }
-                }}
+                onChange={(lat, lng) => movePin(lat, lng, false)}
+                onLocationChange={applyLocation}
+                resolveToken={resolveToken}
               />
+              {locationNote && <p className="field-error">{locationNote}</p>}
               <div className="location-picker-row">
                 <input
                   type="number"
                   step="any"
-                  value={latitude}
-                  onChange={(e) => setLatitude(parseFloat(e.target.value))}
+                  min={-90}
+                  max={90}
+                  aria-label="Latitude"
+                  value={Number.isFinite(latitude) ? latitude : ''}
+                  onChange={(e) => setLatitude(e.target.value === '' ? NaN : parseFloat(e.target.value))}
+                  onBlur={() => Number.isFinite(latitude) && setResolveToken((n) => n + 1)}
                 />
                 <input
                   type="number"
                   step="any"
-                  value={longitude}
-                  onChange={(e) => setLongitude(parseFloat(e.target.value))}
+                  min={-180}
+                  max={180}
+                  aria-label="Longitude"
+                  value={Number.isFinite(longitude) ? longitude : ''}
+                  onChange={(e) => setLongitude(e.target.value === '' ? NaN : parseFloat(e.target.value))}
+                  onBlur={() => Number.isFinite(longitude) && setResolveToken((n) => n + 1)}
                 />
                 <button
                   type="button"
@@ -447,6 +480,16 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
                   value={postalCode}
                   onChange={(e) => setPostalCode(e.target.value)}
                   placeholder="Auto-filled from map"
+                  maxLength={20}
+                />
+              </div>
+              <div className="form-group">
+                <label>County</label>
+                <input
+                  value={county}
+                  onChange={(e) => setCounty(e.target.value)}
+                  placeholder="Auto-filled from map"
+                  maxLength={120}
                 />
               </div>
               <div className="form-group">
@@ -612,7 +655,44 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
               {imagePreview && (
                 <img src={imagePreview} alt="Preview" className="upload-preview" />
               )}
+              {photoGps && (
+                <div className="location-suggestion" role="status">
+                  📍 {photoGps.source === 'photo' ? 'This photo was taken' : 'You are'}{' '}
+                  {(distanceMeters({ lat: photoGps.lat, lng: photoGps.lng }, { lat: latitude, lng: longitude }) / 1000).toFixed(1)} km
+                  from the pin.
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => {
+                      movePin(photoGps.lat, photoGps.lng);
+                      setPhotoGps(null);
+                    }}
+                  >
+                    Use this location
+                  </button>
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => setPhotoGps(null)}>
+                    Keep my pin
+                  </button>
+                </div>
+              )}
             </div>
+            {(videoUrl || audioUrl) && (
+              <div className="attached-media">
+                {videoUrl && (
+                  <span className="media-chip">
+                    🎥 Video attached
+                    <button type="button" aria-label="Remove video" onClick={() => setVideoUrl(null)}>×</button>
+                  </span>
+                )}
+                {audioUrl && (
+                  <span className="media-chip">
+                    🎙️ Audio attached
+                    <button type="button" aria-label="Remove audio" onClick={() => setAudioUrl(null)}>×</button>
+                  </span>
+                )}
+              </div>
+            )}
+            {uploadError && <p className="field-error" role="alert">{uploadError}</p>}
             {mode === 'advanced' && (
               <>
                 <div className="form-row">
@@ -681,16 +761,15 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
                     <input
                       type="datetime-local"
                       value={occurredAt}
-                      onChange={(e) => setOccurredAt(e.target.value)}
+                      max={toDatetimeLocal(new Date())}
+                      onChange={(e) => {
+                        setOccurredAtTouched(true);
+                        setOccurredAt(e.target.value);
+                      }}
                     />
                   </div>
                 </div>
               </>
-            )}
-            {gpsDetected && (
-              <div style={{ fontSize: '12px', color: '#2e7d32', marginTop: '4px' }}>
-                📍 GPS location detected and auto-filled
-              </div>
             )}
           </div>
         )}
@@ -708,8 +787,8 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
             </p>
             <p>
               {city || 'City TBD'}
-              {stateProvince ? `, ${stateProvince}` : ''} · {latitude.toFixed(4)},{' '}
-              {longitude.toFixed(4)}
+              {stateProvince ? `, ${stateProvince}` : ''} · {Number.isFinite(latitude) ? latitude.toFixed(4) : '?'},{' '}
+              {Number.isFinite(longitude) ? longitude.toFixed(4) : '?'}
             </p>
             {(estimatedCostLow || estimatedCostHigh) && (
               <p>
@@ -720,6 +799,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
           </div>
         )}
 
+        {submitError && <p className="field-error report-form-error" role="alert">{submitError}</p>}
         <div className="report-form-actions">
           {step > 0 && (
             <button

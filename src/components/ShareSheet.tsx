@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
+
+const noSubscribe = () => () => {};
 
 interface ShareSheetProps {
   urlPath: string;
@@ -12,12 +14,9 @@ interface ShareSheetProps {
 export default function ShareSheet({ urlPath, title, text, compact }: ShareSheetProps) {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(!compact);
-  const [absoluteUrl, setAbsoluteUrl] = useState(urlPath);
-
-  useEffect(() => {
-    const path = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
-    setAbsoluteUrl(`${window.location.origin}${path}`);
-  }, [urlPath]);
+  // The origin is only known in the browser; the server renders the relative path.
+  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => '');
+  const absoluteUrl = `${origin}${urlPath.startsWith('/') ? urlPath : `/${urlPath}`}`;
 
   const body = text || title;
   const mailto = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${body}\n\n${absoluteUrl}`)}`;

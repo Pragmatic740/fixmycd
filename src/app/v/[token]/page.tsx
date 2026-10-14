@@ -39,6 +39,16 @@ function renderPieLabel(props: { label?: string; count?: number }): string {
   return `${props.label ?? ''} (${props.count ?? 0})`;
 }
 
+/** Pass on where the viewer came from (hostname only) for share-link view stats. */
+function referrerQuery(): string {
+  try {
+    const host = document.referrer ? new URL(document.referrer).hostname : '';
+    return host && host !== window.location.hostname ? `?ref=${encodeURIComponent(host)}` : '';
+  } catch {
+    return '';
+  }
+}
+
 export default function SharedAnalyticsViewerPage() {
   const params = useParams();
   const token = params.token as string;
@@ -57,15 +67,15 @@ export default function SharedAnalyticsViewerPage() {
     rows: [],
   });
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedToken, setLoadedToken] = useState<string | null>(null);
+  const loading = !!token && loadedToken !== token;
 
   useEffect(() => {
     if (!token) return;
-    setLoading(true);
 
     Promise.all([
       fetch(`/api/public/analytics/${token}/meta`).then((r) => r.json()),
-      fetch(`/api/public/analytics/${token}/summary`).then((r) => r.json()),
+      fetch(`/api/public/analytics/${token}/summary${referrerQuery()}`).then((r) => r.json()),
       fetch(`/api/public/analytics/${token}/timeseries?bucket=month`).then((r) => r.json()),
       fetch(`/api/public/analytics/${token}/breakdowns?groupBy=infrastructureClass`).then((r) => r.json()),
       fetch(`/api/public/analytics/${token}/breakdowns?groupBy=status`).then((r) => r.json()),
@@ -92,7 +102,7 @@ export default function SharedAnalyticsViewerPage() {
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : 'Failed to load shared view')
       )
-      .finally(() => setLoading(false));
+      .finally(() => setLoadedToken(token));
   }, [token]);
 
   if (loading) {
@@ -208,11 +218,9 @@ export default function SharedAnalyticsViewerPage() {
                   dataKey="count"
                   nameKey="label"
                   outerRadius={80}
-                  label={(props: any) => {
-                    const label = props?.label ?? props?.name ?? '';
-                    const count = props?.count ?? props?.value ?? 0;
-                    return `${label} (${count})`;
-                  }}
+                  label={(props: { label?: string; name?: string; count?: number; value?: number }) =>
+                    `${props.label ?? props.name ?? ''} (${props.count ?? props.value ?? 0})`
+                  }
                 >
                   {byStatus.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />

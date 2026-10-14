@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import BetaSignup from '@/components/BetaSignup';
 
 interface PublicReport {
   id: string;
@@ -70,6 +71,8 @@ export default function PublicFeedPage() {
             </Link>
           ))}
         </div>
+
+        <BetaSignup />
       </main>
     </div>
   );

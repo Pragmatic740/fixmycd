@@ -15,6 +15,7 @@ import {
 } from '@/lib/analytics';
 import { fetchTigerBoundaries, mapLevelToTigerLayer } from '@/lib/geo/tigerweb';
 import { withCache } from '@/lib/analytics-cache';
+import { serverError } from '@/lib/http';
 
 export async function GET(
   request: Request,
@@ -117,8 +118,6 @@ export async function GET(
         return NextResponse.json({ error: `Unknown analytics endpoint: ${endpoint}` }, { status: 404 });
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Analytics query failed';
-    console.error('Analytics error:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/[endpoint]');
   }
 }

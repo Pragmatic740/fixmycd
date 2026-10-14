@@ -20,8 +20,9 @@ export interface ReportListItem {
   createdAt: string;
   submitterId: string;
   userDisplayName: string | null;
-  userEmail: string | null;
   upvoteCount: number;
   commentCount: number;
+  endorsementCount?: number;
+  endorsementAverage?: number | null;
   userHasUpvoted: boolean;
 }

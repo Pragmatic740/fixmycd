@@ -1,22 +1,11 @@
 import { NextResponse } from 'next/server';
-import { db } from '../../../../db';
-import { users } from '../../../../db/schema';
-import { eq } from 'drizzle-orm';
-import { cookies } from 'next/headers';
+import { getSessionUser } from '@/lib/auth';
+import { serverError } from '@/lib/http';
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const userIdCookie = cookieStore.get('session_user_id');
-
-    if (!userIdCookie || !userIdCookie.value) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
-    }
-
-    const userList = await db.select().from(users).where(eq(users.id, userIdCookie.value)).limit(1);
-    const user = userList[0];
-
-    if (!user || user.disabledAt) {
+    const user = await getSessionUser();
+    if (!user) {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
@@ -28,9 +17,10 @@ export async function GET() {
         displayName: user.displayName,
         role: user.role,
         bio: user.bio,
+        emailNotifications: user.emailNotifications,
       },
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return serverError(error, 'auth/me');
   }
 }

@@ -44,7 +44,12 @@ export async function enrichReportLocation(
     };
   }
 
-  geo = { ...geo, ...overrides, latitude, longitude };
+  // Only real values from the form override the geocoder: an empty city field
+  // must not wipe the city the geocoder found.
+  const provided = Object.fromEntries(
+    Object.entries(overrides ?? {}).filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+  ) as Partial<CensusGeography>;
+  geo = { ...geo, ...provided, latitude, longitude };
 
   const locationId = crypto.randomUUID();
   const existing = await db.select().from(reportLocations).where(eq(reportLocations.reportId, reportId)).limit(1);

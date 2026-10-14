@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { InstallButton } from '@/components/InstallButton';
 
 export default function InstallPage() {
   return (
@@ -51,6 +52,8 @@ export default function InstallPage() {
           </p>
         </div>
 
+        <InstallButton />
+
         {/* iOS */}
         <section
           style={{
@@ -89,7 +92,7 @@ export default function InstallPage() {
             </li>
             <li style={{ marginBottom: '8px' }}>
               Scroll down and tap{' '}
-              <strong style={{ color: '#ffffff' }}>"Add to Home Screen"</strong>
+              <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home Screen&rdquo;</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
               Name it <strong style={{ color: '#ffffff' }}>FixMyDistrict</strong> and
@@ -136,8 +139,8 @@ export default function InstallPage() {
             </li>
             <li style={{ marginBottom: '8px' }}>
               Tap{' '}
-              <strong style={{ color: '#ffffff' }}>"Install app"</strong> or{' '}
-              <strong style={{ color: '#ffffff' }}>"Add to Home screen"</strong>
+              <strong style={{ color: '#ffffff' }}>&ldquo;Install app&rdquo;</strong> or{' '}
+              <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home screen&rdquo;</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
               Confirm by tapping <strong style={{ color: '#ffffff' }}>Install</strong>

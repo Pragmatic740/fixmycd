@@ -4,6 +4,7 @@ import { reports } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { isAuthError, requireAdmin } from '@/lib/auth';
 import { enrichReportLocation } from '@/lib/geo/enrich';
+import { serverError } from '@/lib/http';
 
 export async function POST(
   _request: Request,
@@ -23,7 +24,6 @@ export async function POST(
     const geo = await enrichReportLocation(id, report.latitude, report.longitude);
     return NextResponse.json({ success: true, geography: geo });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Re-enrichment failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/reports/[id]/reenrich');
   }
 }

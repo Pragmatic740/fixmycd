@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isAllowedMediaUrl } from './media-url';
 
 export type CsvImportRow = Record<string, string>;
 
@@ -126,6 +127,9 @@ export function mapCsvRow(
   const reportId = `rpt_${idHash}`;
   const locId = `loc_${idHash}`;
 
+  if (row.imageUrl && !isAllowedMediaUrl(row.imageUrl, 'image')) {
+    return { error: `Row ${index + 1}: imageUrl must be an https image on an allowed host (Vercel Blob or Unsplash)` };
+  }
   const imageUrl = row.imageUrl
     ? row.imageUrl
     : opts.useStockPhotos

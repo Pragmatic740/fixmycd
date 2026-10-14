@@ -2,19 +2,33 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { eq, desc, and, isNull, sql, inArray } from 'drizzle-orm';
 import { db } from '@/db';
-import { analyticsShareTokens, shareViewEvents } from '@/db/schema';
+import { analyticsSavedViews, analyticsShareTokens, shareViewEvents, users } from '@/db/schema';
 import { isAuthError, requireAdmin } from '@/lib/auth';
 import { filtersForPersist } from '@/lib/analytics';
+import { badRequest, notFound, parseJsonBody, serverError } from '@/lib/http';
+import { shareCreateSchema } from '@/lib/validation';
 
+const toIso = (v: Date | string | null) => (v == null ? null : new Date(v).toISOString());
+
+/** Share links are team-wide: any admin can see and revoke any active link. */
 export async function GET() {
   try {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
     const rows = await db
-      .select()
+      .select({
+        id: analyticsShareTokens.id,
+        token: analyticsShareTokens.token,
+        label: analyticsShareTokens.label,
+        createdAt: analyticsShareTokens.createdAt,
+        expiresAt: analyticsShareTokens.expiresAt,
+        createdBy: analyticsShareTokens.createdBy,
+        createdByName: users.displayName,
+      })
       .from(analyticsShareTokens)
-      .where(and(eq(analyticsShareTokens.createdBy, admin.id), isNull(analyticsShareTokens.revokedAt)))
+      .leftJoin(users, eq(users.id, analyticsShareTokens.createdBy))
+      .where(isNull(analyticsShareTokens.revokedAt))
       .orderBy(desc(analyticsShareTokens.createdAt));
 
     if (rows.length === 0) {
@@ -22,19 +36,20 @@ export async function GET() {
     }
 
     const tokenIds = rows.map((r) => r.id);
+    const since = new Date(Date.now() - 14 * 86400000);
     const viewCounts = await db
       .select({
         tokenId: shareViewEvents.tokenId,
-        count: sql<number>`count(*)`.as('count'),
-        lastViewed: sql<string>`max(${shareViewEvents.viewedAt})`.as('lastViewed'),
+        count: sql<number>`cast(count(*) as int)`,
+        lastViewed: sql<Date | string | null>`max(${shareViewEvents.viewedAt})`,
+        recent: sql<number>`cast(count(*) filter (where ${shareViewEvents.viewedAt} >= ${since.toISOString()}::timestamptz) as int)`,
       })
       .from(shareViewEvents)
       .where(inArray(shareViewEvents.tokenId, tokenIds))
       .groupBy(shareViewEvents.tokenId);
 
-    const viewsByToken = new Map(
-      viewCounts.map((v) => [v.tokenId, { count: Number(v.count), lastViewed: v.lastViewed }])
-    );
+    const viewsByToken = new Map(viewCounts.map((v) => [v.tokenId, v]));
+    const now = Date.now();
 
     return NextResponse.json(
       rows.map((r) => {
@@ -45,15 +60,18 @@ export async function GET() {
           label: r.label,
           urlPath: `/v/${r.token}`,
           createdAt: r.createdAt.toISOString(),
-          expiresAt: r.expiresAt?.toISOString() ?? null,
+          expiresAt: toIso(r.expiresAt),
+          expired: r.expiresAt != null && r.expiresAt.getTime() <= now,
+          createdByName: r.createdByName,
+          mine: r.createdBy === admin.id,
           viewCount: views?.count ?? 0,
-          lastViewedAt: views?.lastViewed ?? null,
+          viewsLast14Days: views?.recent ?? 0,
+          lastViewedAt: toIso(views?.lastViewed ?? null),
         };
       })
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to list shares';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/shares GET');
   }
 }
 
@@ -62,24 +80,33 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const body = await request.json();
-    if (!body.filters || typeof body.filters !== 'object') {
-      return NextResponse.json({ error: 'filters required' }, { status: 400 });
+    const parsed = await parseJsonBody(request, shareCreateSchema);
+    if (!parsed.ok) return parsed.response;
+    const { label, savedViewId, expiresAt } = parsed.data;
+    const filters = filtersForPersist(parsed.data.filters);
+
+    if (savedViewId) {
+      const [view] = await db
+        .select({ id: analyticsSavedViews.id })
+        .from(analyticsSavedViews)
+        .where(eq(analyticsSavedViews.id, savedViewId))
+        .limit(1);
+      if (!view) return badRequest('Invalid input', { savedViewId: 'Saved view not found' });
     }
-    const filters = filtersForPersist(body.filters);
 
     const id = crypto.randomUUID();
     const token = crypto.randomBytes(24).toString('base64url');
     const now = new Date();
+    const expires = expiresAt ? new Date(expiresAt) : null;
 
     await db.insert(analyticsShareTokens).values({
       id,
       token,
       createdBy: admin.id,
-      savedViewId: body.savedViewId || null,
+      savedViewId: savedViewId ?? null,
       filtersJson: JSON.stringify(filters),
-      label: body.label ? String(body.label).trim() : null,
-      expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+      label: label ?? null,
+      expiresAt: expires,
       createdAt: now,
     });
 
@@ -87,17 +114,20 @@ export async function POST(request: Request) {
       {
         id,
         token,
-        label: body.label || null,
+        label: label ?? null,
         urlPath: `/v/${token}`,
         createdAt: now.toISOString(),
+        expiresAt: expires?.toISOString() ?? null,
+        expired: false,
+        mine: true,
         viewCount: 0,
+        viewsLast14Days: 0,
         lastViewedAt: null,
       },
       { status: 201 }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to create share';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/shares POST');
   }
 }
 
@@ -106,20 +136,18 @@ export async function DELETE(request: Request) {
     const admin = await requireAdmin();
     if (isAuthError(admin)) return admin;
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id || id.length > 100) return badRequest('id required');
 
     const updated = await db
       .update(analyticsShareTokens)
       .set({ revokedAt: new Date() })
-      .where(and(eq(analyticsShareTokens.id, id), eq(analyticsShareTokens.createdBy, admin.id)))
-      .returning();
+      .where(and(eq(analyticsShareTokens.id, id), isNull(analyticsShareTokens.revokedAt)))
+      .returning({ id: analyticsShareTokens.id });
 
-    if (!updated[0]) return NextResponse.json({ error: 'Share not found' }, { status: 404 });
+    if (!updated[0]) return notFound('Share not found');
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to revoke share';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serverError(error, 'admin/analytics/shares DELETE');
   }
 }
