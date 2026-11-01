@@ -114,3 +114,26 @@ export function toDatetimeLocal(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+/**
+ * GPS position and capture time from a photo's EXIF data. exifr is loaded on
+ * demand because it is large. The raw GPS tags must be picked: exifr derives
+ * latitude/longitude from them, and picking only 'latitude'/'longitude' drops
+ * the tags and returns no position.
+ */
+export async function readPhotoMetadata(
+  file: Blob | ArrayBuffer | Uint8Array
+): Promise<{ lat?: number; lng?: number; takenAt?: Date | null }> {
+  try {
+    const { default: exifr } = await import('exifr');
+    const data = await exifr.parse(file, {
+      gps: true,
+      pick: ['DateTimeOriginal', 'GPSLatitude', 'GPSLatitudeRef', 'GPSLongitude', 'GPSLongitudeRef'],
+    });
+    if (!data) return {};
+    return { lat: data.latitude, lng: data.longitude, takenAt: plausibleCaptureDate(data.DateTimeOriginal) };
+  } catch (error) {
+    console.warn('Could not read photo metadata:', error);
+    return {};
+  }
+}

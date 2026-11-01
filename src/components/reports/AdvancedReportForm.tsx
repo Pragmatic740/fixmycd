@@ -8,7 +8,7 @@ import {
   distanceMeters,
   extensionForMime,
   isPlausibleGps,
-  plausibleCaptureDate,
+  readPhotoMetadata,
   toDatetimeLocal,
 } from '../../lib/media-recording';
 import {
@@ -116,19 +116,6 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     if (resolve) setResolveToken((n) => n + 1);
   };
 
-  /** Read GPS position and capture time from a photo (loaded on demand: exifr is large). */
-  const readPhotoMeta = async (file: File): Promise<{ lat?: number; lng?: number; takenAt?: Date | null }> => {
-    try {
-      const { default: exifr } = await import('exifr');
-      const data = await exifr.parse(file, { gps: true, pick: ['DateTimeOriginal', 'latitude', 'longitude'] });
-      if (!data) return {};
-      return { lat: data.latitude, lng: data.longitude, takenAt: plausibleCaptureDate(data.DateTimeOriginal) };
-    } catch (error) {
-      console.warn('Could not read photo metadata:', error);
-      return {};
-    }
-  };
-
   /** Offer (never force) a location from a photo or the device when it differs from the pin. */
   const suggestLocation = (lat: number, lng: number, source: 'photo' | 'device') => {
     const far = distanceMeters({ lat, lng }, { lat: latitude, lng: longitude }) > 50;
@@ -142,7 +129,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     setImagePreview(URL.createObjectURL(file));
     try {
       // Upload and read EXIF at the same time.
-      const [url, meta] = await Promise.all([uploadFile(file), readPhotoMeta(file)]);
+      const [url, meta] = await Promise.all([uploadFile(file), readPhotoMetadata(file)]);
       if (url) setImageUrl(url);
       if (isPlausibleGps(meta.lat, meta.lng)) suggestLocation(meta.lat!, meta.lng!, 'photo');
       if (meta.takenAt && !occurredAtTouched) setOccurredAt(toDatetimeLocal(meta.takenAt));

@@ -119,3 +119,21 @@ describe('geocoder parsing', () => {
     expect(cacheKey(40.712812, -74.006012)).toBe(cacheKey(40.71284, -74.00599));
   });
 });
+
+describe('readPhotoMetadata', () => {
+  it('returns the GPS position and capture time from a real JPEG', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const { readPhotoMetadata } = await import('@/lib/media-recording');
+    const bytes = new Uint8Array(readFileSync(resolve(__dirname, '../fixtures/photo-with-gps.jpg')));
+    const meta = await readPhotoMetadata(bytes);
+    expect(meta.lat).toBeCloseTo(40.7158, 4);
+    expect(meta.lng).toBeCloseTo(-74.002, 4);
+    expect(meta.takenAt).toBeInstanceOf(Date);
+  });
+
+  it('returns nothing for a file without EXIF', async () => {
+    const { readPhotoMetadata } = await import('@/lib/media-recording');
+    expect(await readPhotoMetadata(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]))).toEqual({});
+  });
+});
