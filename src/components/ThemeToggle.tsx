@@ -3,6 +3,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import {
   LIGHT_SCHEME_QUERY,
+  DEFAULT_THEME_PREFERENCE,
   THEME_CHANGE_EVENT,
   THEME_PREFERENCES,
   THEME_STORAGE_KEY,
@@ -29,7 +30,7 @@ function useThemePreference(): ThemePreference {
   return useSyncExternalStore(
     subscribe,
     () => readThemePreference(window.localStorage),
-    () => 'system',
+    () => DEFAULT_THEME_PREFERENCE,
   );
 }
 

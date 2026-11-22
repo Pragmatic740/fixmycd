@@ -35,7 +35,8 @@
   --transition-normal: 250ms ease;
   --transition-slow: 400ms ease;
 
-  /* Theme-dependent surfaces (dark values; light overrides below) */
+  /* Theme-dependent surfaces. :root holds the dark values; light (the default,
+     set on <html data-theme="light">) overrides them below. */
   color-scheme: dark;
   --text-body: #cccccc;
   --accent-text: #c4b5fd;

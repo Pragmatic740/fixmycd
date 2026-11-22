@@ -92,7 +92,7 @@ export default function ProfilePage() {
         </form>
         <section className="profile-appearance" aria-labelledby="appearance-heading">
           <h3 id="appearance-heading">Appearance</h3>
-          <p>Choose light or dark, or follow your device setting. Saved on this device.</p>
+          <p>Light is the default. Choose dark, or follow your device setting. Saved on this device.</p>
           <ThemeToggle />
         </section>
       </div>

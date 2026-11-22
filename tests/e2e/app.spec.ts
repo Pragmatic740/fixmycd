@@ -124,13 +124,15 @@ test('security headers are sent', async ({ request }) => {
   expect(h['x-powered-by']).toBeUndefined();
 });
 
-test('the theme follows the device, and a chosen theme is kept after reload', async ({ browser }) => {
-  const context = await browser.newContext({ colorScheme: 'light' });
+test('light is the default theme, and a chosen theme is kept after reload', async ({ browser }) => {
+  // A device set to dark still starts in light until the user picks something else.
+  const context = await browser.newContext({ colorScheme: 'dark' });
   const page = await context.newPage();
   const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
 
   await page.goto('/');
   expect(await theme()).toBe('light');
+  await expect(page.getByRole('radio', { name: 'Light theme' })).toHaveAttribute('aria-checked', 'true');
 
   await page.getByRole('radio', { name: 'Dark theme' }).click();
   expect(await theme()).toBe('dark');
@@ -138,10 +140,14 @@ test('the theme follows the device, and a chosen theme is kept after reload', as
   expect(await theme()).toBe('dark');
   await expect(page.getByRole('radio', { name: 'Dark theme' })).toHaveAttribute('aria-checked', 'true');
 
-  // Still dark on another page, then back to following the device.
+  // Kept on other pages; "System" follows the device (dark here); light again on request.
   await page.goto('/dashboard');
   expect(await theme()).toBe('dark');
   await page.getByRole('radio', { name: 'System theme' }).click();
+  expect(await theme()).toBe('dark');
+  await page.getByRole('radio', { name: 'Light theme' }).click();
+  expect(await theme()).toBe('light');
+  await page.reload();
   expect(await theme()).toBe('light');
   await context.close();
 });

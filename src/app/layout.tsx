@@ -39,9 +39,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // data-theme defaults to dark (the original look); the inline script swaps in the
-    // saved or OS preference before the first paint, so the DOM wins over hydration.
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    // Light is the default; the inline script swaps in a saved choice (or the device
+    // setting for "System") before the first paint, so the DOM wins over hydration.
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

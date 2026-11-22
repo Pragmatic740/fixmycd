@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import vm from 'node:vm';
 import {
+  DEFAULT_THEME_PREFERENCE,
   THEME_STORAGE_KEY,
   applyResolvedTheme,
   parseThemePreference,
@@ -46,10 +47,12 @@ function runInitScript(stored: string | null, systemPrefersLight: boolean, { sto
 }
 
 describe('theme preference', () => {
-  it('accepts only light and dark, anything else means system', () => {
+  it('defaults to light; only light, dark and system are accepted', () => {
+    expect(DEFAULT_THEME_PREFERENCE).toBe('light');
     expect(parseThemePreference('light')).toBe('light');
     expect(parseThemePreference('dark')).toBe('dark');
-    for (const v of ['system', '', null, undefined, 'LIGHT', 'blue', 1]) expect(parseThemePreference(v)).toBe('system');
+    expect(parseThemePreference('system')).toBe('system');
+    for (const v of ['', null, undefined, 'LIGHT', 'blue', 1]) expect(parseThemePreference(v)).toBe('light');
   });
 
   it('resolves system from the OS setting and keeps explicit choices', () => {
@@ -59,19 +62,23 @@ describe('theme preference', () => {
     expect(resolveTheme('dark', true)).toBe('dark');
   });
 
-  it('stores explicit choices and clears the key for system', () => {
+  it('stores dark and system, and clears the key for the light default', () => {
     const storage = memoryStorage();
-    writeThemePreference(storage, 'light');
-    expect(storage.data.get(THEME_STORAGE_KEY)).toBe('light');
     expect(readThemePreference(storage)).toBe('light');
+    writeThemePreference(storage, 'dark');
+    expect(storage.data.get(THEME_STORAGE_KEY)).toBe('dark');
+    expect(readThemePreference(storage)).toBe('dark');
     writeThemePreference(storage, 'system');
-    expect(storage.data.has(THEME_STORAGE_KEY)).toBe(false);
+    expect(storage.data.get(THEME_STORAGE_KEY)).toBe('system');
     expect(readThemePreference(storage)).toBe('system');
+    writeThemePreference(storage, 'light');
+    expect(storage.data.has(THEME_STORAGE_KEY)).toBe(false);
+    expect(readThemePreference(storage)).toBe('light');
   });
 
-  it('falls back to system when storage is unavailable or throws', () => {
-    expect(readThemePreference(undefined)).toBe('system');
-    expect(readThemePreference(throwingStorage)).toBe('system');
+  it('falls back to light when storage is unavailable or throws', () => {
+    expect(readThemePreference(undefined)).toBe('light');
+    expect(readThemePreference(throwingStorage)).toBe('light');
     expect(() => writeThemePreference(throwingStorage, 'dark')).not.toThrow();
   });
 
@@ -90,6 +97,7 @@ describe('inline theme script', () => {
     ['light', false],
     ['dark', true],
     ['system', true],
+    ['system', false],
     ['garbage', false],
   ];
 
@@ -100,9 +108,14 @@ describe('inline theme script', () => {
     expect(root.style.colorScheme).toBe(expected);
   });
 
-  it('follows the OS setting when storage throws', () => {
-    expect(runInitScript(null, true, { storageThrows: true }).dataset.theme).toBe('light');
-    expect(runInitScript(null, false, { storageThrows: true }).dataset.theme).toBe('dark');
+  it('uses light by default, even on a dark device', () => {
+    expect(runInitScript(null, false).dataset.theme).toBe('light');
+    expect(runInitScript(null, false, { storageThrows: true }).dataset.theme).toBe('light');
+  });
+
+  it('follows the device only when System was chosen', () => {
+    expect(runInitScript('system', false).dataset.theme).toBe('dark');
+    expect(runInitScript('system', true).dataset.theme).toBe('light');
   });
 
   it('never throws, even without matchMedia', () => {
@@ -110,6 +123,6 @@ describe('inline theme script', () => {
     expect(() =>
       vm.runInNewContext(themeInitScript, { localStorage: memoryStorage(), window: {}, document: { documentElement: root } }),
     ).not.toThrow();
-    expect(root.dataset.theme).toBe('dark');
+    expect(root.dataset.theme).toBe('light');
   });
 });
