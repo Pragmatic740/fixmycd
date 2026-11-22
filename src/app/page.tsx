@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function LandingPage() {
   return (
@@ -10,6 +11,7 @@ export default function LandingPage() {
           <span>FixMyDistrict</span>
         </div>
         <div className="landing-nav-links">
+          <ThemeToggle compact />
           <Link href="#features">Features</Link>
           <Link href="#how-it-works">How it works</Link>
           <Link href="/public" className="btn-secondary">

@@ -25,6 +25,7 @@ import type {
   DataQualityIssue,
 } from '@/lib/analytics-types';
 import AnalyticsDashboardControls from '@/components/analytics/AnalyticsDashboardControls';
+import { CHART_AXIS, CHART_GRID, CHART_TOOLTIP_STYLE } from '@/components/analytics/chartTheme';
 
 const AnalyticsMap = dynamic(() => import('@/components/maps/AnalyticsMap'), {
   ssr: false,
@@ -355,10 +356,10 @@ export default function AnalyticsContent() {
                 <h3>Reports over time</h3>
                 <ResponsiveContainer width="100%" height={260}>
                   <AreaChart data={timeseries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="bucket" stroke="#888" tick={{ fontSize: 11 }} />
-                    <YAxis stroke="#888" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="bucket" stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
+                    <YAxis stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf633" name="Reports" />
                     <Area type="monotone" dataKey="resolved" stroke="#22c55e" fill="#22c55e22" name="Resolved" />
                   </AreaChart>
@@ -381,10 +382,10 @@ export default function AnalyticsContent() {
                 </div>
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={breakdowns.slice(0, 12)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="label" stroke="#888" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={60} />
-                    <YAxis stroke="#888" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="label" stroke={CHART_AXIS} tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={60} />
+                    <YAxis stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -396,7 +397,7 @@ export default function AnalyticsContent() {
                     <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} label>
                       {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -405,10 +406,10 @@ export default function AnalyticsContent() {
                 <h3>Severity vs estimated cost</h3>
                 <ResponsiveContainer width="100%" height={260}>
                   <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis type="number" dataKey="x" name="Severity" domain={[0, 5]} stroke="#888" />
-                    <YAxis type="number" dataKey="y" name="Cost" stroke="#888" />
-                    <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis type="number" dataKey="x" name="Severity" domain={[0, 5]} stroke={CHART_AXIS} />
+                    <YAxis type="number" dataKey="y" name="Cost" stroke={CHART_AXIS} />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={CHART_TOOLTIP_STYLE} />
                     <Scatter data={scatter} fill="#3b82f6" />
                   </ScatterChart>
                 </ResponsiveContainer>
@@ -495,10 +496,10 @@ export default function AnalyticsContent() {
                 <h3>Estimated cost over time</h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={timeseries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="bucket" stroke="#888" />
-                    <YAxis stroke="#888" />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="bucket" stroke={CHART_AXIS} />
+                    <YAxis stroke={CHART_AXIS} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Line type="monotone" dataKey="estimatedCost" stroke="#f97316" name="Est. cost" />
                     <Line type="monotone" dataKey="critical" stroke="#ef4444" name="Critical" />
                   </LineChart>
@@ -508,10 +509,10 @@ export default function AnalyticsContent() {
                 <h3>Cost by class</h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={breakdowns.slice(0, 10)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="label" stroke="#888" tick={{ fontSize: 10 }} />
-                    <YAxis stroke="#888" />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="label" stroke={CHART_AXIS} tick={{ fontSize: 10 }} />
+                    <YAxis stroke={CHART_AXIS} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Bar dataKey="estimatedCost" fill="#f97316" name="Est. cost" />
                     <Bar dataKey="actualCost" fill="#22c55e" name="Actual" />
                   </BarChart>

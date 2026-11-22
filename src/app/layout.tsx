@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { PWARegister } from '@/components/PWARegister';
+import { ThemeController } from '@/components/ThemeToggle';
+import { themeInitScript } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -37,9 +39,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // data-theme defaults to dark (the original look); the inline script swaps in the
+    // saved or OS preference before the first paint, so the DOM wins over hydration.
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         {children}
+        <ThemeController />
         <PWARegister />
       </body>
     </html>

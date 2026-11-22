@@ -55,7 +55,7 @@ function buildPopup(report: Report): HTMLElement {
   card.appendChild(el('div', 'map-popup-header', report.title));
 
   const meta = el('div', undefined, `Ref: ${report.referenceNo} · ${report.status.replace(/_/g, ' ')}`);
-  meta.style.cssText = 'font-size:10px;color:#888;margin-bottom:6px';
+  meta.style.cssText = 'font-size:10px;color:var(--text-tertiary);margin-bottom:6px';
   card.appendChild(meta);
 
   if (report.imageUrl && isAllowedMediaUrl(report.imageUrl, 'image')) {

@@ -123,3 +123,25 @@ test('security headers are sent', async ({ request }) => {
   expect(h['content-security-policy-report-only']).toContain("frame-ancestors 'none'");
   expect(h['x-powered-by']).toBeUndefined();
 });
+
+test('the theme follows the device, and a chosen theme is kept after reload', async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: 'light' });
+  const page = await context.newPage();
+  const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
+
+  await page.goto('/');
+  expect(await theme()).toBe('light');
+
+  await page.getByRole('radio', { name: 'Dark theme' }).click();
+  expect(await theme()).toBe('dark');
+  await page.reload();
+  expect(await theme()).toBe('dark');
+  await expect(page.getByRole('radio', { name: 'Dark theme' })).toHaveAttribute('aria-checked', 'true');
+
+  // Still dark on another page, then back to following the device.
+  await page.goto('/dashboard');
+  expect(await theme()).toBe('dark');
+  await page.getByRole('radio', { name: 'System theme' }).click();
+  expect(await theme()).toBe('light');
+  await context.close();
+});

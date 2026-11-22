@@ -9,6 +9,7 @@ import { CurrentUserProvider, isAdminRole, isModeratorRole, useCurrentUser } fro
 import { clearOfflineCaches } from '../../lib/pwa-client';
 import { loginUrlFor } from '../../lib/redirect';
 import { handleFor } from '../../lib/utils';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -132,6 +133,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <Link href="/install" className="pwa-install-link">
           📱 Install App
         </Link>
+        <ThemeToggle compact className="sidebar-theme-toggle" />
         {isReadOnly && (
           <div className="readonly-notice">
             <p>You&apos;re browsing as a guest. Sign in to post, comment, and upvote.</p>
