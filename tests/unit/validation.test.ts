@@ -112,16 +112,25 @@ describe('feed filter helpers', () => {
 describe('auth schemas', () => {
   it('normalizes emails', () => {
     expect(normalizeEmail('  Foo@Bar.COM ')).toBe('foo@bar.com');
-    expect(signupSchema.parse({ email: ' A@B.co ', password: 'abcdefgh', displayName: ' Ann ' })).toEqual({
+    expect(signupSchema.parse({ email: ' A@B.co ', password: 'abcdefgh', displayName: ' Ann ', acceptEthics: true })).toEqual({
       email: 'a@b.co',
       password: 'abcdefgh',
       displayName: 'Ann',
+      acceptEthics: true,
     });
   });
 
+  it('requires agreeing to the Code of Ethics', () => {
+    const base = { email: 'a@b.co', password: 'abcdefgh', displayName: 'A' };
+    expect(signupSchema.safeParse(base).success).toBe(false);
+    expect(signupSchema.safeParse({ ...base, acceptEthics: false }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...base, acceptEthics: 'true' }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...base, acceptEthics: true }).success).toBe(true);
+  });
+
   it('caps passwords at 72 bytes (bcrypt would silently truncate)', () => {
-    expect(signupSchema.safeParse({ email: 'a@b.co', password: 'a'.repeat(72), displayName: 'A' }).success).toBe(true);
-    expect(signupSchema.safeParse({ email: 'a@b.co', password: 'a'.repeat(73), displayName: 'A' }).success).toBe(false);
+    expect(signupSchema.safeParse({ email: 'a@b.co', password: 'a'.repeat(72), displayName: 'A', acceptEthics: true }).success).toBe(true);
+    expect(signupSchema.safeParse({ email: 'a@b.co', password: 'a'.repeat(73), displayName: 'A', acceptEthics: true }).success).toBe(false);
   });
 });
 

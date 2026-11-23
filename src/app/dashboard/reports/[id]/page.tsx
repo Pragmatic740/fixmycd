@@ -146,7 +146,7 @@ export default function ReportDetailPage() {
       window.location.href = loginHref;
       return;
     }
-    const reason = prompt('Why are you flagging this post?');
+    const reason = prompt('Why are you flagging this post? (e.g. breaks the Code of Ethics, spam, wrong location)');
     if (!reason?.trim()) return;
     const res = await fetch(`/api/reports/${encodeURIComponent(id)}/flag`, {
       method: 'POST',

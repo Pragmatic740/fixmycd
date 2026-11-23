@@ -11,6 +11,7 @@ export default function SignupPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [acceptEthics, setAcceptEthics] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export default function SignupPage() {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName }),
+        body: JSON.stringify({ email, password, displayName, acceptEthics }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -134,6 +135,28 @@ export default function SignupPage() {
                   required
                 />
                 {fieldErrors.password && <p className="field-error">{fieldErrors.password}</p>}
+              </div>
+
+              <div className="form-group">
+                <label className="filter-checkbox ethics-agree">
+                  <input
+                    type="checkbox"
+                    checked={acceptEthics}
+                    onChange={(e) => setAcceptEthics(e.target.checked)}
+                    aria-invalid={!!fieldErrors.acceptEthics}
+                    aria-describedby="ethics-help"
+                  />
+                  <span>
+                    I agree to the{' '}
+                    <a href="/ethics" target="_blank" rel="noopener">
+                      Code of Ethics
+                    </a>
+                  </span>
+                </label>
+                <p id="ethics-help" className="field-hint">
+                  Be truthful, be respectful, protect privacy and act in good faith.
+                </p>
+                {fieldErrors.acceptEthics && <p className="field-error">{fieldErrors.acceptEthics}</p>}
               </div>
 
               <button type="submit" className="btn-primary auth-btn" disabled={loading}>

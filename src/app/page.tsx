@@ -90,7 +90,7 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <p>&copy; {new Date().getFullYear()} FixMyDistrict. Built for the community.</p>
         <p className="landing-footer-links">
-          <Link href="/donate">Donate</Link>
+          <Link href="/ethics">Code of Ethics</Link> · <Link href="/donate">Donate</Link>
         </p>
       </footer>
     </>

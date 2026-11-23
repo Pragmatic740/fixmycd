@@ -167,7 +167,7 @@ describe('signup', () => {
   it('creates a pending account with a normalized email and a cost-12 hash', async () => {
     const res = await call(signup, {
       method: 'POST',
-      body: { email: '  New.Person@Example.TEST ', password: 'long-enough-pw', displayName: 'New Person' },
+      body: { email: '  New.Person@Example.TEST ', password: 'long-enough-pw', displayName: 'New Person', acceptEthics: true },
     });
     expect(res.status).toBe(201);
     expect(res.json).toMatchObject({ success: true, pending: true });
@@ -184,7 +184,7 @@ describe('signup', () => {
     const existing = await createUser({ email: 'taken@example.test' });
     const res = await call(signup, {
       method: 'POST',
-      body: { email: 'TAKEN@example.test', password: 'long-enough-pw', displayName: 'Imposter' },
+      body: { email: 'TAKEN@example.test', password: 'long-enough-pw', displayName: 'Imposter', acceptEthics: true },
     });
     expect(res.status).toBe(201);
     const rows = await db.select().from(users).where(eq(users.id, existing.id));
@@ -193,11 +193,11 @@ describe('signup', () => {
   });
 
   it.each([
-    [{ email: 'not-an-email', password: 'long-enough-pw', displayName: 'X' }, 'email'],
-    [{ email: 'a@example.test', password: 'short', displayName: 'X' }, 'password'],
-    [{ email: 'a@example.test', password: 'é'.repeat(40), displayName: 'X' }, 'password'],
-    [{ email: 'a@example.test', password: 'long-enough-pw', displayName: '   ' }, 'displayName'],
-    [{ email: 'a@example.test', password: 'long-enough-pw', displayName: 'x'.repeat(81) }, 'displayName'],
+    [{ email: 'not-an-email', password: 'long-enough-pw', displayName: 'X', acceptEthics: true }, 'email'],
+    [{ email: 'a@example.test', password: 'short', displayName: 'X', acceptEthics: true }, 'password'],
+    [{ email: 'a@example.test', password: 'é'.repeat(40), displayName: 'X', acceptEthics: true }, 'password'],
+    [{ email: 'a@example.test', password: 'long-enough-pw', displayName: '   ', acceptEthics: true }, 'displayName'],
+    [{ email: 'a@example.test', password: 'long-enough-pw', displayName: 'x'.repeat(81), acceptEthics: true }, 'displayName'],
   ])('rejects invalid input %#', async (body, field) => {
     const res = await call(signup, { method: 'POST', body });
     expect(res.status).toBe(400);
@@ -209,7 +209,7 @@ describe('signup', () => {
     for (let i = 0; i < 6; i++) {
       const res = await call(signup, {
         method: 'POST',
-        body: { email: `bulk${i}@example.test`, password: 'long-enough-pw', displayName: 'Bulk' },
+        body: { email: `bulk${i}@example.test`, password: 'long-enough-pw', displayName: 'Bulk', acceptEthics: true },
         ip: '192.0.2.50',
       });
       last = res.status;

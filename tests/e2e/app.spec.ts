@@ -52,6 +52,10 @@ test('signup waits for approval, an admin approves, then the user can log in', a
   await page.getByLabel('Full Name').fill('New Bie');
   await page.getByLabel('Email Address').fill(email);
   await page.getByLabel('Password').fill('long-enough-pass');
+  // Signing up requires agreeing to the Code of Ethics.
+  await page.getByRole('button', { name: 'Sign Up' }).click();
+  await expect(page.getByText(/agree to the Code of Ethics to join/)).toBeVisible();
+  await page.getByRole('checkbox', { name: /Code of Ethics/ }).check();
   await page.getByRole('button', { name: 'Sign Up' }).click();
   await expect(page.getByRole('heading', { name: 'Almost there' })).toBeVisible();
 
@@ -158,6 +162,25 @@ test('a standard user can open analytics without seeing reporter details', async
   await expect(page.getByRole('button', { name: 'Reporters' })).toHaveCount(0);
   await expect(page.getByPlaceholder('Reporter name')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Share this dashboard' })).toBeVisible();
+});
+
+test('a new user can skip the approval wait with the $1 check (demo)', async ({ page }) => {
+  const email = `payer-${Date.now()}@e2e.test`;
+  await page.goto('/signup');
+  await page.getByLabel('Full Name').fill('Paying Person');
+  await page.getByLabel('Email Address').fill(email);
+  await page.getByLabel('Password').fill('long-enough-pass');
+  await page.getByRole('checkbox', { name: /Code of Ethics/ }).check();
+  await page.getByRole('button', { name: 'Sign Up' }).click();
+
+  await expect(page.getByText('Demo — no real charge.')).toBeVisible();
+  await page.getByLabel('Name on card').fill('Paying Person');
+  await page.getByLabel('Card number').fill('4242 4242 4242 4242');
+  await page.getByLabel('Expiry').fill('12/30');
+  await page.getByLabel('CVC').fill('123');
+  await page.getByRole('button', { name: 'Pay $1 and start posting' }).click();
+  await expectPath(page, '/dashboard');
+  await expect(page.getByRole('button', { name: 'Log Out' })).toBeVisible();
 });
 
 test('light is the default theme, and a chosen theme is kept after reload', async ({ browser }) => {
