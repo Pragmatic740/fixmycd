@@ -16,7 +16,6 @@ const ROUTES: Record<string, { label: string; parents: Crumb[] }> = {
   '/dashboard/account/profile': { label: 'Profile', parents: [ACCOUNT] },
   '/dashboard/account/users': { label: 'Users & approvals', parents: [ACCOUNT] },
   '/dashboard/account/ethics': { label: 'Code of Ethics', parents: [ACCOUNT] },
-  '/dashboard/account/donate': { label: 'Donate', parents: [ACCOUNT] },
   '/dashboard/review': { label: 'Review queue', parents: [ACCOUNT] },
 };
 

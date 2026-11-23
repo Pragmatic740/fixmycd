@@ -2586,3 +2586,25 @@ a.notification-item {
   .app-nav-group-toggle, .app-subnav { display: none; }
   .app-nav-group, .app-nav-group-head { display: contents; }
 }
+
+/* ===== Demo checkout ($1 check, donations) ===== */
+.demo-checkout { margin-top: 12px; }
+.demo-checkout-banner {
+  margin-bottom: 14px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 13px; line-height: 1.5;
+  background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); color: var(--text-primary);
+}
+.demo-checkout-banner code { font-weight: 700; white-space: nowrap; }
+.demo-checkout-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.why-dollar { margin: 8px 0 4px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--bg-tertiary); text-align: left; }
+.why-dollar h3 { font-size: 15px; margin-bottom: 6px; }
+.why-dollar ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+.auth-or { margin-top: 18px; font-weight: 600; }
+.donate-amounts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 16px 0; }
+.donate-amount {
+  padding: 10px 0; border-radius: var(--radius-md); border: 1px solid var(--border-hover);
+  font-weight: 700; color: var(--text-primary); background: var(--bg-secondary);
+}
+.donate-amount.active { border-color: var(--purple-start); background: rgba(139, 92, 246, 0.12); }
+.status-badge-verified { background: rgba(34, 197, 94, 0.15); color: #16a34a; }
+.landing-footer-links { margin-top: 6px; }
+.landing-footer-links a { color: var(--purple-start); }

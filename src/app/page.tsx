@@ -89,6 +89,9 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="landing-footer">
         <p>&copy; {new Date().getFullYear()} FixMyDistrict. Built for the community.</p>
+        <p className="landing-footer-links">
+          <Link href="/donate">Donate</Link>
+        </p>
       </footer>
     </>
   );

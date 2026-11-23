@@ -22,6 +22,33 @@ export const users = pgTable('users', {
   disabledAt: timestamp('disabled_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   emailNotifications: boolean('email_notifications').notNull().default(true),
+  // How the account was activated without manual review ('card_demo'), and when.
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  verificationMethod: text('verification_method'),
+  // Version of the Code of Ethics the user agreed to at signup.
+  ethicsAcceptedVersion: integer('ethics_accepted_version'),
+});
+
+// Demo checkout records ($1 identity check and donations). No real money moves;
+// only the last 4 digits of the test card are kept, never the number or CVC.
+export const demoPayments = pgTable('demo_payments', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  kind: text('kind').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  last4: text('last4').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userIdx: index('demo_payments_user_idx').on(table.userId),
+}));
+
+// Published versions of the Code of Ethics (the newest is current).
+export const ethicsVersions = pgTable('ethics_versions', {
+  id: text('id').primaryKey(),
+  version: integer('version').notNull().unique(),
+  body: text('body').notNull(),
+  publishedBy: text('published_by').references(() => users.id, { onDelete: 'set null' }),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const betaSubscribers = pgTable('beta_subscribers', {

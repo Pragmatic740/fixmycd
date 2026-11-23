@@ -22,6 +22,7 @@ export const RATE_LIMITS = {
   comment: { limit: 20, windowSeconds: 10 * 60 },
   report: { limit: 20, windowSeconds: 60 * 60 },
   flag: { limit: 20, windowSeconds: 60 * 60 },
+  payment: { limit: 10, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;
 
 export type RateLimitResult = { ok: boolean; remaining: number; retryAfterSeconds: number };

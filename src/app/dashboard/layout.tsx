@@ -140,6 +140,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                   {subLink('/dashboard/account/profile', 'Profile')}
                   {isModerator && subLink('/dashboard/review', 'Review queue')}
                   {isAdmin && subLink('/dashboard/account/users', 'Users & approvals')}
+                  {subLink('/donate', 'Donate')}
                 </div>
               )}
             </div>

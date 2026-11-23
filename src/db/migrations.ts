@@ -409,6 +409,31 @@ export async function runMigrations(client: postgres.Sql): Promise<void> {
     await sql`ALTER TABLE "share_view_events" ADD COLUMN IF NOT EXISTS "visitor_hash" text;`;
     await sql`CREATE INDEX IF NOT EXISTS "share_view_visitor_idx" ON "share_view_events" ("token_id", "visitor_hash", "viewed_at");`;
 
+    // $1 identity check (demo), donations and the Code of Ethics
+    await sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verified_at" timestamp with time zone;`;
+    await sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verification_method" text;`;
+    await sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "ethics_accepted_version" integer;`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS "demo_payments" (
+        "id" text PRIMARY KEY NOT NULL,
+        "user_id" text REFERENCES "users"("id") ON DELETE SET NULL,
+        "kind" text NOT NULL,
+        "amount_cents" integer NOT NULL,
+        "last4" text NOT NULL,
+        "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS "demo_payments_user_idx" ON "demo_payments" ("user_id");`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS "ethics_versions" (
+        "id" text PRIMARY KEY NOT NULL,
+        "version" integer NOT NULL UNIQUE,
+        "body" text NOT NULL,
+        "published_by" text REFERENCES "users"("id") ON DELETE SET NULL,
+        "published_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+    `;
+
     // Rate limiting counters
     await sql`
       CREATE TABLE IF NOT EXISTS "rate_limits" (

@@ -14,6 +14,7 @@ export default function AccountPage() {
   const sections: Section[] = [
     { href: '/dashboard/account/profile', title: 'Profile', description: 'Your name, bio, email updates and appearance.' },
   ];
+  sections.push({ href: '/donate', title: 'Donate', description: 'Help pay to run FixMyDistrict. No data is ever sold.' });
   if (isModeratorRole(user.role)) {
     sections.push({ href: '/dashboard/review', title: 'Review queue', description: 'Triage new and flagged posts.' });
   }

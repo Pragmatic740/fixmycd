@@ -19,6 +19,7 @@ const userListColumns = {
   status: users.status,
   disabledAt: users.disabledAt,
   isSynthetic: users.isSynthetic,
+  verificationMethod: users.verificationMethod,
   createdAt: users.createdAt,
 };
 

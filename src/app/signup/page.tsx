@@ -2,8 +2,12 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { DemoCheckout, postPayment } from '@/components/DemoCheckout';
+import { WhyOneDollar } from '@/components/WhyOneDollar';
 
 export default function SignupPage() {
+  const router = useRouter();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,13 +58,24 @@ export default function SignupPage() {
         {pendingMessage ? (
           <div className="auth-pending" role="status">
             <h2>Almost there</h2>
+            <WhyOneDollar />
+            <DemoCheckout
+              amountCents={100}
+              buttonLabel="Pay $1 and start posting"
+              onPay={async (card) => {
+                const result = await postPayment('/api/verify', { email, password, card });
+                if (result.ok) router.push('/dashboard');
+                return result;
+              }}
+            />
+            <p className="auth-subtitle auth-or">Or wait for an admin</p>
             <p className="auth-subtitle">{pendingMessage}</p>
             <p className="auth-subtitle">
               We&apos;ll email <strong>{email.trim().toLowerCase()}</strong> when an admin has reviewed your request.
               Meanwhile you can browse posts as a guest.
             </p>
-            <Link href="/dashboard" className="btn-primary auth-btn">
-              Browse posts
+            <Link href="/dashboard" className="btn-secondary auth-btn">
+              Browse posts as a guest
             </Link>
             <p className="auth-footer">
               Already approved? <Link href="/login">Log In</Link>
