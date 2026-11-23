@@ -350,7 +350,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
       </div>
 
       <p className="analytics-hint">
-        Setup CSV saves/restores filter parameters only. Data CSV exports report rows (use Upload data CSV below to import inventory).
+        Setup CSV saves/restores filter parameters only. Data CSV exports the matching posts
+        {isAdmin ? ' (use Upload data CSV below to import inventory)' : ''}.
       </p>
 
       {selectedView && (

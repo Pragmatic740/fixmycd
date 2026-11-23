@@ -29,10 +29,30 @@ handles untrusted input. Keep this up to date when changing any of it.
 
 | Role | Can |
 | --- | --- |
-| viewer / submitter | report, comment, upvote, flag, follow |
-| referee | + review queue, change report status, endorse |
-| admin | + manage non-admin users, analytics, share links, CSV import, beta launch email |
+| viewer / submitter | post, comment, upvote, flag, follow; analytics without reporter data; create and revoke their own share links |
+| referee | + review queue, change post status, endorse |
+| admin | + manage non-admin users, full analytics (reporters, data quality, saved views), all share links, CSV import, beta launch email, publish the Code of Ethics |
 | super_admin | + manage admins and grant super_admin |
+
+### Analytics for members
+
+`/api/analytics/*` serves every signed-in user; `/api/admin/analytics/*`
+keeps the admin-only paths. Both run `src/lib/analytics-endpoint.ts`. For
+non-admins, post rows and CSV exports drop reporter ids, emails, roles and
+account flags (`toPublicReportRows`, as public share links do), reporter
+filters and per-person grouping are ignored, and the `users` / `quality`
+endpoints return 403. Share links created by members never store reporter
+filters. `tests/integration/member-analytics.test.ts` checks all of this.
+
+### $1 identity check and Code of Ethics
+
+New accounts start `pending`. Paying the $1 check (`/api/verify`) activates
+the account without an admin; it requires the account's email **and
+password**, so it reveals nothing about which emails are registered. The
+checkout is a demo: only the test card is accepted and only the last 4
+digits are stored (see `docs/PAYMENTS.md`). Signup requires agreeing to the
+current Code of Ethics; the version is stored on the user. Publishing a new
+version is admin-only and audited (`ethics.publish`).
 
 Nobody can change their own role, status or disabled flag through the
 admin API. Every admin change is written to `admin_audit_log`.
@@ -54,6 +74,7 @@ Postgres-backed fixed windows (`src/lib/rate-limit.ts`, table
 | upload | 30 / 10 min per user+IP |
 | geocode | 60 / min per IP |
 | PDF export | 20 / min per IP |
+| $1 check, donation | 10 / hour per IP (+ the per-account login limit for the $1 check) |
 
 ## Input and output
 

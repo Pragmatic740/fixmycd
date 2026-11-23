@@ -2633,3 +2633,15 @@ a.notification-item {
 .ethics-agree { display: flex; align-items: flex-start; gap: 8px; }
 .ethics-agree a { color: var(--purple-start); text-decoration: underline; }
 .field-hint { margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+
+/* Analytics is open to everyone now, including on phones: keep it within the screen. */
+.app-main { min-width: 0; }
+.analytics-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.map-controls { flex-wrap: wrap; max-width: 100%; }
+@media (max-width: 768px) {
+  .analytics-filters input,
+  .analytics-filters select { flex: 1 1 140px; min-width: 0; }
+  .analytics-chart-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.analytics-page, .chart-panel, .analytics-map-section, .analytics-kpi-grid > * { min-width: 0; }
+.ethics-agree input[type='checkbox'] { width: auto; flex: 0 0 auto; margin-top: 4px; }

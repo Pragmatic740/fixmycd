@@ -133,7 +133,7 @@ export default function AdminPage() {
   return (
     <div>
       <div className="feed-header">
-        <h2>Admin — Users</h2>
+        <h2>Users &amp; approvals</h2>
         <Link href="/dashboard/analytics" className="btn-primary btn-sm">
           Open Analytics
         </Link>

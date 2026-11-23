@@ -348,7 +348,7 @@ export default function AnalyticsContent() {
         <>
           {(tab === 'overview' || tab === 'costs') && (
             <div className="analytics-kpi-grid">
-              <div className="analytics-kpi"><span>Total reports</span><strong>{summary.totalReports}</strong></div>
+              <div className="analytics-kpi"><span>Total posts</span><strong>{summary.totalReports}</strong></div>
               <div className="analytics-kpi"><span>Open backlog</span><strong>{summary.openBacklog}</strong></div>
               <div className="analytics-kpi"><span>Critical (4–5)</span><strong>{summary.criticalReports}</strong></div>
               <div className="analytics-kpi"><span>Reporters</span><strong>{summary.uniqueReporters}</strong></div>
