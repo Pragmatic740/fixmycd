@@ -246,12 +246,12 @@ export default function DashboardFeed() {
           <div className="feed-empty feed-empty-rich">
             <div className="feed-empty-icon">📍</div>
             <h3>
-              {feedType === 'local' ? 'Nothing nearby yet' : 'No matching reports'}
+              {feedType === 'local' ? 'Nothing nearby yet' : 'No matching posts'}
             </h3>
             <p>
               {feedType === 'local'
-                ? 'Try For you, or report an issue in your area.'
-                : 'Adjust filters or be the first to report something.'}
+                ? 'Try For you, or post an issue in your area.'
+                : 'Adjust filters or be the first to post something.'}
             </p>
             {activeFilterCount > 0 && (
               <button type="button" className="btn-secondary btn-sm" onClick={clearFilters}>

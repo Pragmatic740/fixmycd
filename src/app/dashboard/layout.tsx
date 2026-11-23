@@ -171,7 +171,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
         {isAuthenticated && (
           <button className="btn-primary sidebar-report-btn" onClick={() => setIsModalOpen(true)}>
-            Report Issue
+            Post an issue
           </button>
         )}
         <Link href="/install" className="pwa-install-link">
@@ -203,7 +203,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       )}
 
       {isAuthenticated && (
-        <button className="fab" aria-label="Report Issue" onClick={() => setIsModalOpen(true)}>
+        <button className="fab" aria-label="Post an issue" onClick={() => setIsModalOpen(true)}>
           <PlusIcon />
         </button>
       )}

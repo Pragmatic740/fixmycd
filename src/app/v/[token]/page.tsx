@@ -161,7 +161,7 @@ export default function SharedAnalyticsViewerPage() {
         {summary && (
           <div className="analytics-kpi-grid">
             <div className="kpi-card">
-              <span>Reports</span>
+              <span>Posts</span>
               <strong>{summary.totalReports}</strong>
             </div>
             <div className="kpi-card">
@@ -190,7 +190,7 @@ export default function SharedAnalyticsViewerPage() {
                 <XAxis dataKey="bucket" stroke={CHART_AXIS} />
                 <YAxis stroke={CHART_AXIS} />
                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                <Line type="monotone" dataKey="count" stroke="#8b5cf6" name="Reports" />
+                <Line type="monotone" dataKey="count" stroke="#8b5cf6" name="Posts" />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -309,7 +309,7 @@ export default function SharedAnalyticsViewerPage() {
 
         {/* Reports Table */}
         <div className="chart-panel" style={{ marginTop: 16 }}>
-          <h3>Reports ({table.total})</h3>
+          <h3>Posts ({table.total})</h3>
           <div className="analytics-table-wrap">
             <table className="analytics-table">
               <thead>

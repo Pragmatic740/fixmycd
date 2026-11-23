@@ -83,8 +83,8 @@ export default function UserProfilePage() {
             {following ? 'Unfollow' : 'Follow'}
           </button>
         )}
-        <h3 style={{ marginTop: '24px' }}>Reports</h3>
-        {profile.reports.length === 0 && <p className="report-ref">No reports yet.</p>}
+        <h3 style={{ marginTop: '24px' }}>Posts</h3>
+        {profile.reports.length === 0 && <p className="report-ref">No posts yet.</p>}
         {profile.reports.map((r) => (
           <Link key={r.id} href={`/dashboard/reports/${r.id}`} className="profile-report-link">
             <span>{r.title}</span>

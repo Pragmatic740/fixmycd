@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   try {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized. Please log in to report issues.' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized. Please log in to post issues.' }, { status: 401 });
     }
 
     const limited = await enforceRateLimit('report', sessionUser.id);

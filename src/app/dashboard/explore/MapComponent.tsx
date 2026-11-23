@@ -69,7 +69,7 @@ function buildPopup(report: Report): HTMLElement {
 
   card.appendChild(el('div', 'map-popup-desc', (report.description || '').substring(0, 100)));
 
-  const link = el('a', undefined, 'View report →') as HTMLAnchorElement;
+  const link = el('a', undefined, 'View post →') as HTMLAnchorElement;
   link.href = `/dashboard/reports/${encodeURIComponent(report.id)}`;
   link.style.cssText = 'color:#8b5cf6;font-size:12px';
   card.appendChild(link);
@@ -154,7 +154,7 @@ export default function MapComponent({ queryString = '' }: { queryString?: strin
         )}
       </MapContainer>
       {reports.length === 0 && (
-        <div className="map-empty-overlay">No reports match filters</div>
+        <div className="map-empty-overlay">No posts match filters</div>
       )}
     </div>
   );

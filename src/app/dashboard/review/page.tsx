@@ -48,7 +48,7 @@ export default function ReviewPage() {
             <div key={f.id} className="review-item">
               <p>{f.targetType} · {f.reason}</p>
               {f.targetType === 'report' && (
-                <Link href={`/dashboard/reports/${f.targetId}`}>View report</Link>
+                <Link href={`/dashboard/reports/${f.targetId}`}>View post</Link>
               )}
             </div>
           ))}
@@ -56,7 +56,7 @@ export default function ReviewPage() {
       )}
 
       <section className="review-section">
-        <h3>Reports</h3>
+        <h3>Posts</h3>
         {reports.map((r) => (
           <div key={r.id} className="review-item">
             <Link href={`/dashboard/reports/${r.id}`}><strong>{r.title}</strong></Link>

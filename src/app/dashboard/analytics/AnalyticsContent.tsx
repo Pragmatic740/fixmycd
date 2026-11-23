@@ -364,14 +364,14 @@ export default function AnalyticsContent() {
           {(tab === 'overview' || tab === 'infrastructure') && (
             <div className="analytics-chart-grid">
               <div className="chart-panel">
-                <h3>Reports over time</h3>
+                <h3>Posts over time</h3>
                 <ResponsiveContainer width="100%" height={260}>
                   <AreaChart data={timeseries}>
                     <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                     <XAxis dataKey="bucket" stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
                     <YAxis stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                    <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf633" name="Reports" />
+                    <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf633" name="Posts" />
                     <Area type="monotone" dataKey="resolved" stroke="#22c55e" fill="#22c55e22" name="Resolved" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -443,7 +443,7 @@ export default function AnalyticsContent() {
                     <option value="school">School district</option>
                   </select>
                   <select value={filters.metric} onChange={(e) => setFilter('metric', e.target.value)}>
-                    <option value="count">Report count</option>
+                    <option value="count">Post count</option>
                     <option value="criticalCount">Critical count</option>
                     <option value="avgSeverity">Avg severity</option>
                     <option value="unresolvedRate">Unresolved rate</option>
@@ -541,7 +541,7 @@ export default function AnalyticsContent() {
                     <tr>
                       <th>Name</th>
                       <th>Role</th>
-                      <th>Reports</th>
+                      <th>Posts</th>
                       <th>Accepted</th>
                       <th>Resolved</th>
                       <th>Flags</th>

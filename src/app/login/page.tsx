@@ -51,7 +51,7 @@ export default function LoginPage() {
           <span>FixMyDistrict</span>
         </Link>
         <h2>Log in to your account</h2>
-        <p className="auth-subtitle">Access your local feed and report issues</p>
+        <p className="auth-subtitle">Access your local feed and post issues</p>
 
         {error && <div className="auth-error">{error}</div>}
 

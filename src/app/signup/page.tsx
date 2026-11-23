@@ -57,10 +57,10 @@ export default function SignupPage() {
             <p className="auth-subtitle">{pendingMessage}</p>
             <p className="auth-subtitle">
               We&apos;ll email <strong>{email.trim().toLowerCase()}</strong> when an admin has reviewed your request.
-              Meanwhile you can browse reports as a guest.
+              Meanwhile you can browse posts as a guest.
             </p>
             <Link href="/dashboard" className="btn-primary auth-btn">
-              Browse reports
+              Browse posts
             </Link>
             <p className="auth-footer">
               Already approved? <Link href="/login">Log In</Link>
@@ -69,7 +69,7 @@ export default function SignupPage() {
         ) : (
           <>
             <h2>Create your account</h2>
-            <p className="auth-subtitle">Join the local community to report and track infrastructure issues</p>
+            <p className="auth-subtitle">Join the local community to post and track infrastructure issues</p>
 
             {error && <div className="auth-error">{error}</div>}
 

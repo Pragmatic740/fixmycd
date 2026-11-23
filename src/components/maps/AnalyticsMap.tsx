@@ -165,8 +165,8 @@ export default function AnalyticsMap({
     }
     const label = props?.name || props?.id || 'Area';
     const html = area
-      ? `<strong>${label}</strong><br/>${metric}: ${metricValue(area, metric).toLocaleString(undefined, { maximumFractionDigits: 2 })}<br/>Reports: ${area.count}`
-      : `<strong>${label}</strong><br/>No matching reports`;
+      ? `<strong>${label}</strong><br/>${metric}: ${metricValue(area, metric).toLocaleString(undefined, { maximumFractionDigits: 2 })}<br/>Posts: ${area.count}`
+      : `<strong>${label}</strong><br/>No matching posts`;
     layer.bindPopup(html);
   };
 

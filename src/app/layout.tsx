@@ -6,7 +6,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'FixMyDistrict',
-  description: 'Report and track infrastructure failures in your district.',
+  description: 'Post and track infrastructure failures in your district.',
   manifest: '/manifest.json',
   applicationName: 'FixMyDistrict',
   appleWebApp: {

@@ -146,7 +146,7 @@ export default function ReportDetailPage() {
       window.location.href = loginHref;
       return;
     }
-    const reason = prompt('Why are you flagging this report?');
+    const reason = prompt('Why are you flagging this post?');
     if (!reason?.trim()) return;
     const res = await fetch(`/api/reports/${encodeURIComponent(id)}/flag`, {
       method: 'POST',
@@ -157,9 +157,9 @@ export default function ReportDetailPage() {
     setNotice(
       res.ok
         ? data.alreadyFlagged
-          ? 'You already flagged this report; moderators will review it.'
-          : 'Thanks — moderators will review this report.'
-        : data.error || 'Could not flag this report.'
+          ? 'You already flagged this post; moderators will review it.'
+          : 'Thanks — moderators will review this post.'
+        : data.error || 'Could not flag this post.'
     );
   };
 
@@ -179,12 +179,12 @@ export default function ReportDetailPage() {
   }
 
   if (loadState === 'not-found' || (loadState === 'ready' && !report)) {
-    return <div className="feed-empty">Report not found. It may have been removed by a moderator.</div>;
+    return <div className="feed-empty">Post not found. It may have been removed by a moderator.</div>;
   }
   if (loadState === 'error' || !report) {
     return (
       <div className="feed-empty" role="alert">
-        Could not load this report.{' '}
+        Could not load this post.{' '}
         <button className="btn-secondary btn-sm" onClick={() => window.location.reload()}>
           Retry
         </button>

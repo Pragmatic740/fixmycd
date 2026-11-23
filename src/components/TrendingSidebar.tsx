@@ -40,7 +40,7 @@ export default function TrendingSidebar() {
             <div className="skeleton-line shimmer short" />
           </div>
         ) : items.length === 0 ? (
-          <p className="trending-empty">No trending reports yet — upvote issues to surface them.</p>
+          <p className="trending-empty">No trending posts yet — upvote issues to surface them.</p>
         ) : (
           items.map((item, i) => (
             <Link key={item.id} href={`/dashboard/reports/${item.id}`} className="trending-item">

@@ -233,7 +233,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
         const field = data.fields ? Object.entries(data.fields)[0] : null;
         setSubmitError(
           res.status === 429
-            ? 'You have submitted many reports recently. Please try again later.'
+            ? 'You have submitted many posts recently. Please try again later.'
             : field
               ? `${field[0]}: ${field[1]}`
               : data.error || 'Failed to submit'
@@ -253,7 +253,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     >
       <div className="modal-content modal-content-wide">
         <div className="modal-header">
-          <h3>Report Infrastructure Issue</h3>
+          <h3>Post an Infrastructure Issue</h3>
           <button className="close-btn" onClick={onClose}>
             &times;
           </button>
@@ -268,7 +268,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
               setStep(0);
             }}
           >
-            Quick report
+            Quick post
           </button>
           <button
             type="button"
@@ -817,7 +817,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
                 ? 'Uploading…'
                 : submitting
                 ? 'Submitting…'
-                : 'Submit Report'}
+                : 'Submit Post'}
             </button>
           )}
         </div>

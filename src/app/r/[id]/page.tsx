@@ -9,7 +9,7 @@ type Props = { params: Promise<{ id: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const report = await getPublicReport(id);
-  if (!report) return { title: 'Report not found · FixMyDistrict' };
+  if (!report) return { title: 'Post not found · FixMyDistrict' };
 
   const description =
     report.description?.slice(0, 160) ||
@@ -48,7 +48,7 @@ export default async function PublicReportPage({ params }: Props) {
           FixMyDistrict
         </Link>
         <div className="public-topbar-actions">
-          <Link href="/public" className="btn-secondary btn-sm">Browse reports</Link>
+          <Link href="/public" className="btn-secondary btn-sm">Browse posts</Link>
           <Link href="/login" className="btn-primary btn-sm">Sign in</Link>
         </div>
       </header>

@@ -81,7 +81,7 @@ export default function NotificationsPage() {
 
   const getMessage = (n: Notification) => {
     const actor = <strong>{n.actorDisplayName || 'Someone'}</strong>;
-    const report = n.reportTitle || 'your report';
+    const report = n.reportTitle || 'your post';
 
     switch (n.type) {
       case 'upvote':
