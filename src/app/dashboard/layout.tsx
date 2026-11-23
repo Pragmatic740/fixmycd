@@ -50,7 +50,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user: currentUser, loading: loadingUser } = useCurrentUser();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const isAnalytics = pathname.startsWith('/dashboard/admin/analytics');
+  const isAnalytics = pathname.startsWith('/dashboard/analytics');
   const isAuthenticated = !!currentUser;
   // Don't flash the guest notice while the session is still loading.
   const isReadOnly = !loadingUser && !isAuthenticated;
@@ -98,7 +98,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           {isAuthenticated && navLink('/dashboard/notifications', 'Notifications', BellIcon, unreadCount)}
           {isAuthenticated && navLink('/dashboard/profile', 'Profile', UserIcon)}
           {isModerator && navLink('/dashboard/review', 'Review', ExploreIcon)}
-          {isAdmin && navLink('/dashboard/admin/analytics', 'Analytics', ChartIcon)}
+          {isAuthenticated && navLink('/dashboard/analytics', 'Analytics', ChartIcon)}
           {isAdmin && navLink('/dashboard/admin', 'Admin', UserIcon)}
           {isAuthenticated ? (
             <button onClick={logout} className="app-nav-link nav-btn">

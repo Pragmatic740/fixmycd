@@ -11,6 +11,7 @@ const PROTECTED_PAGES = [
   '/dashboard/notifications',
   '/dashboard/profile',
   '/dashboard/review',
+  '/dashboard/analytics',
   '/dashboard/admin',
 ];
 

@@ -82,6 +82,7 @@ export default function AnalyticsContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [breakdowns, setBreakdowns] = useState<BreakdownItem[]>([]);
@@ -159,7 +160,8 @@ export default function AnalyticsContent() {
       .then((r) => r.json())
       .then((data) => {
         const role = data.user?.role;
-        setAuthorized(!!(data.authenticated && (role === 'admin' || role === 'super_admin')));
+        setAuthorized(!!data.authenticated);
+        setIsAdmin(role === 'admin' || role === 'super_admin');
       })
       .catch(() => setAuthorized(false));
   }, []);
@@ -175,15 +177,18 @@ export default function AnalyticsContent() {
     let cancelled = false;
     (async () => {
       try {
+        // Reporter details are admin-only; everyone else skips those requests.
+        const adminOnly = (path: string) =>
+          isAdmin ? fetch(`/api/analytics/${path}?${queryString}`).then((r) => r.json()) : Promise.resolve({ data: [] });
         const [sum, br, ts, sc, mp, users, ql, reps] = await Promise.all([
-          fetch(`/api/admin/analytics/summary?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/breakdowns?${queryString}&groupBy=${debounced.groupBy || 'infrastructureClass'}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/timeseries?${queryString}&bucket=${debounced.bucket || 'month'}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/scatter?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/map?${queryString}&mapLevel=${debounced.mapLevel || 'state'}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/users?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/quality?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/reports?${queryString}&limit=25`).then((r) => r.json()),
+          fetch(`/api/analytics/summary?${queryString}`).then((r) => r.json()),
+          fetch(`/api/analytics/breakdowns?${queryString}&groupBy=${debounced.groupBy || 'infrastructureClass'}`).then((r) => r.json()),
+          fetch(`/api/analytics/timeseries?${queryString}&bucket=${debounced.bucket || 'month'}`).then((r) => r.json()),
+          fetch(`/api/analytics/scatter?${queryString}`).then((r) => r.json()),
+          fetch(`/api/analytics/map?${queryString}&mapLevel=${debounced.mapLevel || 'state'}`).then((r) => r.json()),
+          adminOnly('users'),
+          adminOnly('quality'),
+          fetch(`/api/analytics/reports?${queryString}&limit=25`).then((r) => r.json()),
         ]);
 
         if (cancelled) return;
@@ -201,7 +206,7 @@ export default function AnalyticsContent() {
 
         // Boundaries for choropleth (US mainland rough bbox default)
         const boundRes = await fetch(
-          `/api/admin/analytics/boundaries?${queryString}&mapLevel=${debounced.mapLevel || 'state'}&west=-125&south=24&east=-66&north=50`
+          `/api/analytics/boundaries?${queryString}&mapLevel=${debounced.mapLevel || 'state'}&west=-125&south=24&east=-66&north=50`
         ).then((r) => r.json());
         if (!cancelled) setBoundaries(boundRes.data || null);
       } catch (e: unknown) {
@@ -213,7 +218,7 @@ export default function AnalyticsContent() {
     return () => {
       cancelled = true;
     };
-  }, [authorized, requestKey, queryString, debounced.groupBy, debounced.bucket, debounced.mapLevel]);
+  }, [authorized, isAdmin, requestKey, queryString, debounced.groupBy, debounced.bucket, debounced.mapLevel]);
 
   const setFilter = (key: string, value: string) => setFilters((prev) => ({ ...prev, [key]: value }));
 
@@ -227,9 +232,9 @@ export default function AnalyticsContent() {
   if (!authorized) {
     return (
       <div className="feed-empty feed-empty-rich">
-        <h3>Admin access required</h3>
-        <p>Sign in with an admin account to open the intelligence dashboard.</p>
-        <Link href="/login" className="btn-primary">Go to login</Link>
+        <h3>Sign in to see analytics</h3>
+        <p>Analytics are open to every member. Sign in to explore trends in your district.</p>
+        <Link href="/login?redirect=%2Fdashboard%2Fanalytics" className="btn-primary">Go to login</Link>
       </div>
     );
   }
@@ -244,12 +249,16 @@ export default function AnalyticsContent() {
     <div className="analytics-page">
       <div className="analytics-header">
         <div>
-          <h2>Admin Intelligence</h2>
-          <p className="analytics-subtitle">U.S.-first civic analytics · filter-synced charts, map & reporters</p>
+          <h2>Analytics</h2>
+          <p className="analytics-subtitle">
+            Civic analytics · filter-synced charts and map{isAdmin ? ' & reporters' : ''}
+          </p>
         </div>
-        <div className="analytics-header-actions">
-          <Link href="/dashboard/admin" className="btn-secondary btn-sm">User admin</Link>
-        </div>
+        {isAdmin && (
+          <div className="analytics-header-actions">
+            <Link href="/dashboard/admin" className="btn-secondary btn-sm">User admin</Link>
+          </div>
+        )}
       </div>
 
       <AnalyticsDashboardControls
@@ -260,6 +269,7 @@ export default function AnalyticsContent() {
           )
         }
         queryString={queryString}
+        isAdmin={isAdmin}
       />
 
       <div className="analytics-tabs">
@@ -268,8 +278,7 @@ export default function AnalyticsContent() {
           ['geography', 'Geography'],
           ['infrastructure', 'Infrastructure'],
           ['costs', 'Costs & Impact'],
-          ['reporters', 'Reporters'],
-          ['quality', 'Data Quality'],
+          ...(isAdmin ? [['reporters', 'Reporters'], ['quality', 'Data Quality']] : []),
         ] as [Tab, string][]).map(([id, label]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>
         ))}
@@ -310,7 +319,9 @@ export default function AnalyticsContent() {
         <input placeholder="City / town" value={filters.city} onChange={(e) => setFilter('city', e.target.value)} />
         <input placeholder="County" value={filters.county} onChange={(e) => setFilter('county', e.target.value)} />
         <input placeholder="ZIP" value={filters.postalCode} onChange={(e) => setFilter('postalCode', e.target.value)} />
-        <input placeholder="Reporter name" value={filters.reporterName} onChange={(e) => setFilter('reporterName', e.target.value)} />
+        {isAdmin && (
+          <input placeholder="Reporter name" value={filters.reporterName} onChange={(e) => setFilter('reporterName', e.target.value)} />
+        )}
         <input placeholder="Keyword" value={filters.keyword} onChange={(e) => setFilter('keyword', e.target.value)} />
         <input placeholder="Severity min" value={filters.severityMin} onChange={(e) => setFilter('severityMin', e.target.value)} />
         <input placeholder="Severity max" value={filters.severityMax} onChange={(e) => setFilter('severityMax', e.target.value)} />
