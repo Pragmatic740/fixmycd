@@ -52,7 +52,7 @@ function UnsubscribeContent() {
           </>
         )}
         <p className="auth-footer">
-          <Link href="/dashboard/profile">Profile settings</Link>
+          <Link href="/dashboard/account/profile">Profile settings</Link>
         </p>
       </div>
     </div>

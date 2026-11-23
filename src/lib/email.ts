@@ -40,7 +40,7 @@ const button = (url: string, label: string) =>
 const reportUrl = (reportId: string) => `${BASE_URL}/dashboard/reports/${encodeURIComponent(reportId)}`;
 
 function footer(unsubscribeUrl?: string): string {
-  const settings = `${BASE_URL}/dashboard/profile`;
+  const settings = `${BASE_URL}/dashboard/account/profile`;
   const unsub = unsubscribeUrl
     ? ` or <a href="${escapeHtml(unsubscribeUrl)}">unsubscribe with one click</a>`
     : '';

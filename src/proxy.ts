@@ -9,10 +9,9 @@ const SESSION_COOKIE = 'fmd_session';
 // Pages that require a signed-in user.
 const PROTECTED_PAGES = [
   '/dashboard/notifications',
-  '/dashboard/profile',
+  '/dashboard/account',
   '/dashboard/review',
   '/dashboard/analytics',
-  '/dashboard/admin',
 ];
 
 const TRUSTED_ORIGINS = [process.env.NEXT_PUBLIC_BASE_URL].filter((v): v is string => !!v);

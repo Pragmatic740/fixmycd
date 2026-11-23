@@ -256,7 +256,7 @@ export default function AnalyticsContent() {
         </div>
         {isAdmin && (
           <div className="analytics-header-actions">
-            <Link href="/dashboard/admin" className="btn-secondary btn-sm">User admin</Link>
+            <Link href="/dashboard/account/users" className="btn-secondary btn-sm">Users & approvals</Link>
           </div>
         )}
       </div>

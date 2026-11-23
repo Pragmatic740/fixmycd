@@ -10,6 +10,8 @@ import { clearOfflineCaches } from '../../lib/pwa-client';
 import { loginUrlFor } from '../../lib/redirect';
 import { handleFor } from '../../lib/utils';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { isInAccountSection } from '@/lib/breadcrumbs';
 
 const HomeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -32,6 +34,9 @@ const PlusIcon = () => (
 const LogOutIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
 );
+const ChevronIcon = ({ open }: { open: boolean }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`nav-chevron ${open ? 'open' : ''}`} aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+);
 const LogInIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
 );
@@ -49,6 +54,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { user: currentUser, loading: loadingUser } = useCurrentUser();
   const [unreadCount, setUnreadCount] = useState(0);
+  const inAccount = isInAccountSection(pathname);
+  // The Account group is open while you're inside it, or when toggled.
+  const [accountToggled, setAccountToggled] = useState(false);
+  const accountOpen = inAccount || accountToggled;
 
   const isAnalytics = pathname.startsWith('/dashboard/analytics');
   const isAuthenticated = !!currentUser;
@@ -69,10 +78,17 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     };
   }, [currentUser, pathname]);
 
+  const isActive = (href: string) => pathname === href || (href !== '/dashboard' && pathname.startsWith(`${href}/`));
   const navLink = (href: string, label: string, Icon: React.FC, badge?: number) => (
-    <Link href={href} className={`app-nav-link ${pathname === href || (href !== '/dashboard' && pathname.startsWith(href)) ? 'active' : ''}`}>
+    <Link href={href} className={`app-nav-link ${isActive(href) ? 'active' : ''}`} aria-current={pathname === href ? 'page' : undefined}>
       <Icon /> <span>{label}</span>
       {badge ? <span className="nav-badge" aria-label={`${badge} unread`}>{badge > 99 ? '99+' : badge}</span> : null}
+    </Link>
+  );
+
+  const subLink = (href: string, label: string) => (
+    <Link href={href} className={`app-subnav-link ${isActive(href) || pathname === href ? 'active' : ''}`} aria-current={pathname === href ? 'page' : undefined}>
+      {label}
     </Link>
   );
 
@@ -95,11 +111,39 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <nav className="app-nav">
           {navLink('/dashboard', 'Home', HomeIcon)}
           {navLink('/dashboard/explore', 'Explore', ExploreIcon)}
-          {isAuthenticated && navLink('/dashboard/notifications', 'Notifications', BellIcon, unreadCount)}
-          {isAuthenticated && navLink('/dashboard/profile', 'Profile', UserIcon)}
-          {isModerator && navLink('/dashboard/review', 'Review', ExploreIcon)}
           {isAuthenticated && navLink('/dashboard/analytics', 'Analytics', ChartIcon)}
-          {isAdmin && navLink('/dashboard/admin', 'Admin', UserIcon)}
+          {isAuthenticated && navLink('/dashboard/notifications', 'Notifications', BellIcon, unreadCount)}
+          {isAuthenticated && (
+            <div className={`app-nav-group ${accountOpen ? 'open' : ''}`}>
+              <div className="app-nav-group-head">
+                <Link
+                  href="/dashboard/account"
+                  className={`app-nav-link ${inAccount ? 'active' : ''}`}
+                  aria-current={pathname === '/dashboard/account' ? 'page' : undefined}
+                >
+                  <UserIcon /> <span>Account</span>
+                </Link>
+                <button
+                  type="button"
+                  className="app-nav-group-toggle"
+                  aria-expanded={accountOpen}
+                  aria-controls="account-subnav"
+                  aria-label={accountOpen ? 'Collapse Account menu' : 'Expand Account menu'}
+                  onClick={() => setAccountToggled((v) => !v)}
+                  disabled={inAccount}
+                >
+                  <ChevronIcon open={accountOpen} />
+                </button>
+              </div>
+              {accountOpen && (
+                <div className="app-subnav" id="account-subnav">
+                  {subLink('/dashboard/account/profile', 'Profile')}
+                  {isModerator && subLink('/dashboard/review', 'Review queue')}
+                  {isAdmin && subLink('/dashboard/account/users', 'Users & approvals')}
+                </div>
+              )}
+            </div>
+          )}
           {isAuthenticated ? (
             <button onClick={logout} className="app-nav-link nav-btn">
               <LogOutIcon /> <span>Log Out</span>
@@ -147,7 +191,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         )}
       </aside>
 
-      <main className={`app-main ${isAnalytics ? 'app-main-wide' : ''}`}>{children}</main>
+      <main className={`app-main ${isAnalytics ? 'app-main-wide' : ''}`}>
+        <Breadcrumbs />
+        {children}
+      </main>
 
       {!isAnalytics && (
         <aside className="app-right-sidebar">

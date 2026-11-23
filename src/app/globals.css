@@ -2538,3 +2538,51 @@ a.notification-item {
 @media (max-width: 768px) {
   .sidebar-theme-toggle { display: none; }
 }
+
+/* ===== Account menu group ===== */
+.app-nav-group-head { display: flex; align-items: center; }
+.app-nav-group-head .app-nav-link { flex: 1; }
+.app-nav-group-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: var(--radius-full); color: var(--text-secondary);
+}
+.app-nav-group-toggle:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.app-nav-group-toggle:disabled { cursor: default; }
+.app-nav-group-toggle:focus-visible { outline: 2px solid var(--purple-start); outline-offset: 1px; }
+.nav-chevron { width: 18px; height: 18px; transition: transform var(--transition-fast); }
+.nav-chevron.open { transform: rotate(90deg); }
+.app-subnav {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 6px 28px; padding-left: 12px; border-left: 2px solid var(--border-color);
+}
+.app-subnav-link {
+  padding: 8px 12px; border-radius: var(--radius-md); font-size: 15px; color: var(--text-secondary);
+}
+.app-subnav-link:hover { background: var(--bg-hover); color: var(--text-primary); }
+.app-subnav-link.active { color: var(--text-primary); font-weight: 700; background: var(--bg-tertiary); }
+
+/* ===== Breadcrumbs ===== */
+.breadcrumbs { padding: 10px 16px 0; font-size: 13px; color: var(--text-tertiary); }
+.breadcrumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.breadcrumbs li { display: inline-flex; align-items: center; gap: 4px; }
+.breadcrumbs li + li::before { content: '›'; color: var(--text-tertiary); padding: 0 2px; }
+.breadcrumbs a { color: var(--text-secondary); }
+.breadcrumbs a:hover { color: var(--purple-start); text-decoration: underline; }
+.breadcrumbs [aria-current='page'] { color: var(--text-primary); font-weight: 600; }
+
+/* ===== Account hub ===== */
+.account-sections { list-style: none; margin: 0; padding: 16px; display: grid; gap: 12px; }
+.account-section-card {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color); background: var(--bg-secondary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.account-section-card:hover { border-color: var(--purple-start); background: var(--bg-hover); }
+.account-section-card strong { font-size: 16px; color: var(--text-primary); }
+.account-section-card span { font-size: 14px; color: var(--text-secondary); }
+
+@media (max-width: 768px) {
+  /* On phones the Account tab opens the hub page, which lists the same items. */
+  .app-nav-group-toggle, .app-subnav { display: none; }
+  .app-nav-group, .app-nav-group-head { display: contents; }
+}

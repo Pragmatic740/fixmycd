@@ -60,9 +60,9 @@ test('signup waits for approval, an admin approves, then the user can log in', a
   await expect(page.getByText(/pending approval/)).toBeVisible();
 
   const admin = await browser.newPage();
-  await admin.goto('/login?redirect=/dashboard/admin');
+  await admin.goto('/login?redirect=/dashboard/account/users');
   await login(admin, E2E_USERS.admin.email);
-  await expectPath(admin, '/dashboard/admin');
+  await expectPath(admin, '/dashboard/account/users');
   const card = admin.locator('.pending-user-card', { hasText: email });
   await card.getByRole('button', { name: 'Approve' }).click();
   await expect(admin.getByText(/Account approved/)).toBeVisible();
@@ -122,6 +122,42 @@ test('security headers are sent', async ({ request }) => {
   expect(h['x-content-type-options']).toBe('nosniff');
   expect(h['content-security-policy-report-only']).toContain("frame-ancestors 'none'");
   expect(h['x-powered-by']).toBeUndefined();
+});
+
+test('Account groups profile and admin pages, with a breadcrumb trail', async ({ page }) => {
+  await page.goto('/login?redirect=/dashboard/account');
+  await login(page, E2E_USERS.neighbour.email);
+  await expectPath(page, '/dashboard/account');
+
+  // A standard user sees Profile, but not the admin pages.
+  await expect(page.locator('.account-sections').getByRole('link', { name: /Profile/ })).toBeVisible();
+  await expect(page.locator('.account-sections').getByRole('link', { name: /Users & approvals/ })).toHaveCount(0);
+
+  await page.locator('.account-sections').getByRole('link', { name: /Profile/ }).click();
+  await expectPath(page, '/dashboard/account/profile');
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
+  await expect(trail).toContainText('Home');
+  await expect(trail).toContainText('Account');
+  await expect(trail.locator('[aria-current="page"]')).toHaveText('Profile');
+
+  // Old links (e.g. in emails) still work.
+  await page.goto('/dashboard/profile');
+  await expectPath(page, '/dashboard/account/profile');
+
+  // Admin pages stay closed to standard users.
+  await page.goto('/dashboard/account/users');
+  await expectPath(page, '/dashboard');
+});
+
+test('a standard user can open analytics without seeing reporter details', async ({ page }) => {
+  await page.goto('/login?redirect=/dashboard/analytics');
+  await login(page, E2E_USERS.neighbour.email);
+  await expectPath(page, '/dashboard/analytics');
+  await expect(page.getByRole('heading', { name: 'Analytics', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reporters' })).toHaveCount(0);
+  await expect(page.getByPlaceholder('Reporter name')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Share this dashboard' })).toBeVisible();
 });
 
 test('light is the default theme, and a chosen theme is kept after reload', async ({ browser }) => {
