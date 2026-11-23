@@ -48,7 +48,7 @@ function metricValue(area: MapAreaAggregate, metric: string): number {
 }
 
 function colorScale(value: number, max: number) {
-  if (max <= 0 || value <= 0) return '#1f2937';
+  if (max <= 0 || value <= 0) return 'var(--map-area-empty)';
   const t = Math.min(1, value / max);
   if (t < 0.25) return '#3b82f6';
   if (t < 0.5) return '#eab308';
@@ -147,10 +147,10 @@ export default function AnalyticsMap({
     }
     const value = area ? metricValue(area, metric) : 0;
     return {
-      fillColor: area ? colorScale(value, maxMetric) : '#111827',
+      fillColor: area ? colorScale(value, maxMetric) : 'var(--map-area-empty)',
       weight: 1,
       opacity: 0.8,
-      color: '#9ca3af',
+      color: 'var(--map-area-border)',
       fillOpacity: area ? 0.55 : 0.15,
     };
   };
@@ -165,8 +165,8 @@ export default function AnalyticsMap({
     }
     const label = props?.name || props?.id || 'Area';
     const html = area
-      ? `<strong>${label}</strong><br/>${metric}: ${metricValue(area, metric).toLocaleString(undefined, { maximumFractionDigits: 2 })}<br/>Reports: ${area.count}`
-      : `<strong>${label}</strong><br/>No matching reports`;
+      ? `<strong>${label}</strong><br/>${metric}: ${metricValue(area, metric).toLocaleString(undefined, { maximumFractionDigits: 2 })}<br/>Posts: ${area.count}`
+      : `<strong>${label}</strong><br/>No matching posts`;
     layer.bindPopup(html);
   };
 

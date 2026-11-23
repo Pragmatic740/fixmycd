@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useCurrentUser } from '@/components/CurrentUserContext';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function ProfilePage() {
   const { user, loading, refresh } = useCurrentUser();
@@ -89,6 +90,11 @@ export default function ProfilePage() {
           )}
           <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
         </form>
+        <section className="profile-appearance" aria-labelledby="appearance-heading">
+          <h3 id="appearance-heading">Appearance</h3>
+          <p>Light is the default. Choose dark, or follow your device setting. Saved on this device.</p>
+          <ThemeToggle />
+        </section>
       </div>
     </div>
   );

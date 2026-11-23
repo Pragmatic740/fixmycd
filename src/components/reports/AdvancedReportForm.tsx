@@ -8,7 +8,7 @@ import {
   distanceMeters,
   extensionForMime,
   isPlausibleGps,
-  plausibleCaptureDate,
+  readPhotoMetadata,
   toDatetimeLocal,
 } from '../../lib/media-recording';
 import {
@@ -116,19 +116,6 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     if (resolve) setResolveToken((n) => n + 1);
   };
 
-  /** Read GPS position and capture time from a photo (loaded on demand: exifr is large). */
-  const readPhotoMeta = async (file: File): Promise<{ lat?: number; lng?: number; takenAt?: Date | null }> => {
-    try {
-      const { default: exifr } = await import('exifr');
-      const data = await exifr.parse(file, { gps: true, pick: ['DateTimeOriginal', 'latitude', 'longitude'] });
-      if (!data) return {};
-      return { lat: data.latitude, lng: data.longitude, takenAt: plausibleCaptureDate(data.DateTimeOriginal) };
-    } catch (error) {
-      console.warn('Could not read photo metadata:', error);
-      return {};
-    }
-  };
-
   /** Offer (never force) a location from a photo or the device when it differs from the pin. */
   const suggestLocation = (lat: number, lng: number, source: 'photo' | 'device') => {
     const far = distanceMeters({ lat, lng }, { lat: latitude, lng: longitude }) > 50;
@@ -142,7 +129,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     setImagePreview(URL.createObjectURL(file));
     try {
       // Upload and read EXIF at the same time.
-      const [url, meta] = await Promise.all([uploadFile(file), readPhotoMeta(file)]);
+      const [url, meta] = await Promise.all([uploadFile(file), readPhotoMetadata(file)]);
       if (url) setImageUrl(url);
       if (isPlausibleGps(meta.lat, meta.lng)) suggestLocation(meta.lat!, meta.lng!, 'photo');
       if (meta.takenAt && !occurredAtTouched) setOccurredAt(toDatetimeLocal(meta.takenAt));
@@ -246,7 +233,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
         const field = data.fields ? Object.entries(data.fields)[0] : null;
         setSubmitError(
           res.status === 429
-            ? 'You have submitted many reports recently. Please try again later.'
+            ? 'You have submitted many posts recently. Please try again later.'
             : field
               ? `${field[0]}: ${field[1]}`
               : data.error || 'Failed to submit'
@@ -266,7 +253,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
     >
       <div className="modal-content modal-content-wide">
         <div className="modal-header">
-          <h3>Report Infrastructure Issue</h3>
+          <h3>Post an Infrastructure Issue</h3>
           <button className="close-btn" onClick={onClose}>
             &times;
           </button>
@@ -281,7 +268,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
               setStep(0);
             }}
           >
-            Quick report
+            Quick post
           </button>
           <button
             type="button"
@@ -830,7 +817,7 @@ export default function AdvancedReportForm({ onClose, onSuccess }: ReportFormPro
                 ? 'Uploading…'
                 : submitting
                 ? 'Submitting…'
-                : 'Submit Report'}
+                : 'Submit Post'}
             </button>
           )}
         </div>

@@ -52,6 +52,10 @@ test('signup waits for approval, an admin approves, then the user can log in', a
   await page.getByLabel('Full Name').fill('New Bie');
   await page.getByLabel('Email Address').fill(email);
   await page.getByLabel('Password').fill('long-enough-pass');
+  // Signing up requires agreeing to the Code of Ethics.
+  await page.getByRole('button', { name: 'Sign Up' }).click();
+  await expect(page.getByText(/agree to the Code of Ethics to join/)).toBeVisible();
+  await page.getByRole('checkbox', { name: /Code of Ethics/ }).check();
   await page.getByRole('button', { name: 'Sign Up' }).click();
   await expect(page.getByRole('heading', { name: 'Almost there' })).toBeVisible();
 
@@ -60,9 +64,9 @@ test('signup waits for approval, an admin approves, then the user can log in', a
   await expect(page.getByText(/pending approval/)).toBeVisible();
 
   const admin = await browser.newPage();
-  await admin.goto('/login?redirect=/dashboard/admin');
+  await admin.goto('/login?redirect=/dashboard/account/users');
   await login(admin, E2E_USERS.admin.email);
-  await expectPath(admin, '/dashboard/admin');
+  await expectPath(admin, '/dashboard/account/users');
   const card = admin.locator('.pending-user-card', { hasText: email });
   await card.getByRole('button', { name: 'Approve' }).click();
   await expect(admin.getByText(/Account approved/)).toBeVisible();
@@ -122,4 +126,87 @@ test('security headers are sent', async ({ request }) => {
   expect(h['x-content-type-options']).toBe('nosniff');
   expect(h['content-security-policy-report-only']).toContain("frame-ancestors 'none'");
   expect(h['x-powered-by']).toBeUndefined();
+});
+
+test('Account groups profile and admin pages, with a breadcrumb trail', async ({ page }) => {
+  await page.goto('/login?redirect=/dashboard/account');
+  await login(page, E2E_USERS.neighbour.email);
+  await expectPath(page, '/dashboard/account');
+
+  // A standard user sees Profile, but not the admin pages.
+  await expect(page.locator('.account-sections').getByRole('link', { name: /Profile/ })).toBeVisible();
+  await expect(page.locator('.account-sections').getByRole('link', { name: /Users & approvals/ })).toHaveCount(0);
+
+  await page.locator('.account-sections').getByRole('link', { name: /Profile/ }).click();
+  await expectPath(page, '/dashboard/account/profile');
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
+  await expect(trail).toContainText('Home');
+  await expect(trail).toContainText('Account');
+  await expect(trail.locator('[aria-current="page"]')).toHaveText('Profile');
+
+  // Old links (e.g. in emails) still work.
+  await page.goto('/dashboard/profile');
+  await expectPath(page, '/dashboard/account/profile');
+
+  // Admin pages stay closed to standard users.
+  await page.goto('/dashboard/account/users');
+  await expectPath(page, '/dashboard');
+});
+
+test('a standard user can open analytics without seeing reporter details', async ({ page }) => {
+  await page.goto('/login?redirect=/dashboard/analytics');
+  await login(page, E2E_USERS.neighbour.email);
+  await expectPath(page, '/dashboard/analytics');
+  await expect(page.getByRole('heading', { name: 'Analytics', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reporters' })).toHaveCount(0);
+  await expect(page.getByPlaceholder('Reporter name')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Share this dashboard' })).toBeVisible();
+});
+
+test('a new user can skip the approval wait with the $1 check (demo)', async ({ page }) => {
+  const email = `payer-${Date.now()}@e2e.test`;
+  await page.goto('/signup');
+  await page.getByLabel('Full Name').fill('Paying Person');
+  await page.getByLabel('Email Address').fill(email);
+  await page.getByLabel('Password').fill('long-enough-pass');
+  await page.getByRole('checkbox', { name: /Code of Ethics/ }).check();
+  await page.getByRole('button', { name: 'Sign Up' }).click();
+
+  await expect(page.getByText('Demo — no real charge.')).toBeVisible();
+  await page.getByLabel('Name on card').fill('Paying Person');
+  await page.getByLabel('Card number').fill('4242 4242 4242 4242');
+  await page.getByLabel('Expiry').fill('12/30');
+  await page.getByLabel('CVC').fill('123');
+  await page.getByRole('button', { name: 'Pay $1 and start posting' }).click();
+  await expectPath(page, '/dashboard');
+  await expect(page.getByRole('button', { name: 'Log Out' })).toBeVisible();
+});
+
+test('light is the default theme, and a chosen theme is kept after reload', async ({ browser }) => {
+  // A device set to dark still starts in light until the user picks something else.
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
+
+  await page.goto('/');
+  expect(await theme()).toBe('light');
+  await expect(page.getByRole('radio', { name: 'Light theme' })).toHaveAttribute('aria-checked', 'true');
+
+  await page.getByRole('radio', { name: 'Dark theme' }).click();
+  expect(await theme()).toBe('dark');
+  await page.reload();
+  expect(await theme()).toBe('dark');
+  await expect(page.getByRole('radio', { name: 'Dark theme' })).toHaveAttribute('aria-checked', 'true');
+
+  // Kept on other pages; "System" follows the device (dark here); light again on request.
+  await page.goto('/dashboard');
+  expect(await theme()).toBe('dark');
+  await page.getByRole('radio', { name: 'System theme' }).click();
+  expect(await theme()).toBe('dark');
+  await page.getByRole('radio', { name: 'Light theme' }).click();
+  expect(await theme()).toBe('light');
+  await page.reload();
+  expect(await theme()).toBe('light');
+  await context.close();
 });

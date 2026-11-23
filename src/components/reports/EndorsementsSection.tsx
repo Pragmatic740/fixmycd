@@ -139,7 +139,7 @@ export function EndorsementsSection({ reportId, isExpert }: EndorsementsSectionP
       {isExpert && !showForm && (
         <div className="endorsement-form-actions">
           <button className="btn-secondary btn-sm" onClick={openForm}>
-            {mine ? 'Edit my endorsement' : 'Endorse this report'}
+            {mine ? 'Edit my endorsement' : 'Endorse this post'}
           </button>
           {mine && (
             <button className="btn-secondary btn-sm" onClick={() => void remove()} disabled={submitting}>

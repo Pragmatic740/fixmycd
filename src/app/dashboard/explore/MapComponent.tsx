@@ -55,7 +55,7 @@ function buildPopup(report: Report): HTMLElement {
   card.appendChild(el('div', 'map-popup-header', report.title));
 
   const meta = el('div', undefined, `Ref: ${report.referenceNo} · ${report.status.replace(/_/g, ' ')}`);
-  meta.style.cssText = 'font-size:10px;color:#888;margin-bottom:6px';
+  meta.style.cssText = 'font-size:10px;color:var(--text-tertiary);margin-bottom:6px';
   card.appendChild(meta);
 
   if (report.imageUrl && isAllowedMediaUrl(report.imageUrl, 'image')) {
@@ -69,7 +69,7 @@ function buildPopup(report: Report): HTMLElement {
 
   card.appendChild(el('div', 'map-popup-desc', (report.description || '').substring(0, 100)));
 
-  const link = el('a', undefined, 'View report →') as HTMLAnchorElement;
+  const link = el('a', undefined, 'View post →') as HTMLAnchorElement;
   link.href = `/dashboard/reports/${encodeURIComponent(report.id)}`;
   link.style.cssText = 'color:#8b5cf6;font-size:12px';
   card.appendChild(link);
@@ -154,7 +154,7 @@ export default function MapComponent({ queryString = '' }: { queryString?: strin
         )}
       </MapContainer>
       {reports.length === 0 && (
-        <div className="map-empty-overlay">No reports match filters</div>
+        <div className="map-empty-overlay">No posts match filters</div>
       )}
     </div>
   );

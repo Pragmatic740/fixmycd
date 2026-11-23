@@ -97,12 +97,12 @@ export default function ReportFilters({
         </svg>
         <input
           type="search"
-          placeholder="Search reports…"
+          placeholder="Search posts…"
           value={keywordInput ?? filters.keyword}
           maxLength={100}
           onChange={(e) => (onKeywordInput ? onKeywordInput(e.target.value) : onChange('keyword', e.target.value))}
           className="filter-input"
-          aria-label="Search reports"
+          aria-label="Search posts"
         />
       </div>
 

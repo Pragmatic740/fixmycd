@@ -25,6 +25,7 @@ import type {
   DataQualityIssue,
 } from '@/lib/analytics-types';
 import AnalyticsDashboardControls from '@/components/analytics/AnalyticsDashboardControls';
+import { CHART_AXIS, CHART_GRID, CHART_TOOLTIP_STYLE } from '@/components/analytics/chartTheme';
 
 const AnalyticsMap = dynamic(() => import('@/components/maps/AnalyticsMap'), {
   ssr: false,
@@ -81,6 +82,7 @@ export default function AnalyticsContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [breakdowns, setBreakdowns] = useState<BreakdownItem[]>([]);
@@ -158,7 +160,8 @@ export default function AnalyticsContent() {
       .then((r) => r.json())
       .then((data) => {
         const role = data.user?.role;
-        setAuthorized(!!(data.authenticated && (role === 'admin' || role === 'super_admin')));
+        setAuthorized(!!data.authenticated);
+        setIsAdmin(role === 'admin' || role === 'super_admin');
       })
       .catch(() => setAuthorized(false));
   }, []);
@@ -174,15 +177,18 @@ export default function AnalyticsContent() {
     let cancelled = false;
     (async () => {
       try {
+        // Reporter details are admin-only; everyone else skips those requests.
+        const adminOnly = (path: string) =>
+          isAdmin ? fetch(`/api/analytics/${path}?${queryString}`).then((r) => r.json()) : Promise.resolve({ data: [] });
         const [sum, br, ts, sc, mp, users, ql, reps] = await Promise.all([
-          fetch(`/api/admin/analytics/summary?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/breakdowns?${queryString}&groupBy=${debounced.groupBy || 'infrastructureClass'}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/timeseries?${queryString}&bucket=${debounced.bucket || 'month'}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/scatter?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/map?${queryString}&mapLevel=${debounced.mapLevel || 'state'}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/users?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/quality?${queryString}`).then((r) => r.json()),
-          fetch(`/api/admin/analytics/reports?${queryString}&limit=25`).then((r) => r.json()),
+          fetch(`/api/analytics/summary?${queryString}`).then((r) => r.json()),
+          fetch(`/api/analytics/breakdowns?${queryString}&groupBy=${debounced.groupBy || 'infrastructureClass'}`).then((r) => r.json()),
+          fetch(`/api/analytics/timeseries?${queryString}&bucket=${debounced.bucket || 'month'}`).then((r) => r.json()),
+          fetch(`/api/analytics/scatter?${queryString}`).then((r) => r.json()),
+          fetch(`/api/analytics/map?${queryString}&mapLevel=${debounced.mapLevel || 'state'}`).then((r) => r.json()),
+          adminOnly('users'),
+          adminOnly('quality'),
+          fetch(`/api/analytics/reports?${queryString}&limit=25`).then((r) => r.json()),
         ]);
 
         if (cancelled) return;
@@ -200,7 +206,7 @@ export default function AnalyticsContent() {
 
         // Boundaries for choropleth (US mainland rough bbox default)
         const boundRes = await fetch(
-          `/api/admin/analytics/boundaries?${queryString}&mapLevel=${debounced.mapLevel || 'state'}&west=-125&south=24&east=-66&north=50`
+          `/api/analytics/boundaries?${queryString}&mapLevel=${debounced.mapLevel || 'state'}&west=-125&south=24&east=-66&north=50`
         ).then((r) => r.json());
         if (!cancelled) setBoundaries(boundRes.data || null);
       } catch (e: unknown) {
@@ -212,7 +218,7 @@ export default function AnalyticsContent() {
     return () => {
       cancelled = true;
     };
-  }, [authorized, requestKey, queryString, debounced.groupBy, debounced.bucket, debounced.mapLevel]);
+  }, [authorized, isAdmin, requestKey, queryString, debounced.groupBy, debounced.bucket, debounced.mapLevel]);
 
   const setFilter = (key: string, value: string) => setFilters((prev) => ({ ...prev, [key]: value }));
 
@@ -226,9 +232,9 @@ export default function AnalyticsContent() {
   if (!authorized) {
     return (
       <div className="feed-empty feed-empty-rich">
-        <h3>Admin access required</h3>
-        <p>Sign in with an admin account to open the intelligence dashboard.</p>
-        <Link href="/login" className="btn-primary">Go to login</Link>
+        <h3>Sign in to see analytics</h3>
+        <p>Analytics are open to every member. Sign in to explore trends in your district.</p>
+        <Link href="/login?redirect=%2Fdashboard%2Fanalytics" className="btn-primary">Go to login</Link>
       </div>
     );
   }
@@ -243,12 +249,16 @@ export default function AnalyticsContent() {
     <div className="analytics-page">
       <div className="analytics-header">
         <div>
-          <h2>Admin Intelligence</h2>
-          <p className="analytics-subtitle">U.S.-first civic analytics · filter-synced charts, map & reporters</p>
+          <h2>Analytics</h2>
+          <p className="analytics-subtitle">
+            Civic analytics · filter-synced charts and map{isAdmin ? ' & reporters' : ''}
+          </p>
         </div>
-        <div className="analytics-header-actions">
-          <Link href="/dashboard/admin" className="btn-secondary btn-sm">User admin</Link>
-        </div>
+        {isAdmin && (
+          <div className="analytics-header-actions">
+            <Link href="/dashboard/account/users" className="btn-secondary btn-sm">Users & approvals</Link>
+          </div>
+        )}
       </div>
 
       <AnalyticsDashboardControls
@@ -259,6 +269,7 @@ export default function AnalyticsContent() {
           )
         }
         queryString={queryString}
+        isAdmin={isAdmin}
       />
 
       <div className="analytics-tabs">
@@ -267,8 +278,7 @@ export default function AnalyticsContent() {
           ['geography', 'Geography'],
           ['infrastructure', 'Infrastructure'],
           ['costs', 'Costs & Impact'],
-          ['reporters', 'Reporters'],
-          ['quality', 'Data Quality'],
+          ...(isAdmin ? [['reporters', 'Reporters'], ['quality', 'Data Quality']] : []),
         ] as [Tab, string][]).map(([id, label]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>
         ))}
@@ -309,7 +319,9 @@ export default function AnalyticsContent() {
         <input placeholder="City / town" value={filters.city} onChange={(e) => setFilter('city', e.target.value)} />
         <input placeholder="County" value={filters.county} onChange={(e) => setFilter('county', e.target.value)} />
         <input placeholder="ZIP" value={filters.postalCode} onChange={(e) => setFilter('postalCode', e.target.value)} />
-        <input placeholder="Reporter name" value={filters.reporterName} onChange={(e) => setFilter('reporterName', e.target.value)} />
+        {isAdmin && (
+          <input placeholder="Reporter name" value={filters.reporterName} onChange={(e) => setFilter('reporterName', e.target.value)} />
+        )}
         <input placeholder="Keyword" value={filters.keyword} onChange={(e) => setFilter('keyword', e.target.value)} />
         <input placeholder="Severity min" value={filters.severityMin} onChange={(e) => setFilter('severityMin', e.target.value)} />
         <input placeholder="Severity max" value={filters.severityMax} onChange={(e) => setFilter('severityMax', e.target.value)} />
@@ -336,7 +348,7 @@ export default function AnalyticsContent() {
         <>
           {(tab === 'overview' || tab === 'costs') && (
             <div className="analytics-kpi-grid">
-              <div className="analytics-kpi"><span>Total reports</span><strong>{summary.totalReports}</strong></div>
+              <div className="analytics-kpi"><span>Total posts</span><strong>{summary.totalReports}</strong></div>
               <div className="analytics-kpi"><span>Open backlog</span><strong>{summary.openBacklog}</strong></div>
               <div className="analytics-kpi"><span>Critical (4–5)</span><strong>{summary.criticalReports}</strong></div>
               <div className="analytics-kpi"><span>Reporters</span><strong>{summary.uniqueReporters}</strong></div>
@@ -352,14 +364,14 @@ export default function AnalyticsContent() {
           {(tab === 'overview' || tab === 'infrastructure') && (
             <div className="analytics-chart-grid">
               <div className="chart-panel">
-                <h3>Reports over time</h3>
+                <h3>Posts over time</h3>
                 <ResponsiveContainer width="100%" height={260}>
                   <AreaChart data={timeseries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="bucket" stroke="#888" tick={{ fontSize: 11 }} />
-                    <YAxis stroke="#888" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
-                    <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf633" name="Reports" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="bucket" stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
+                    <YAxis stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                    <Area type="monotone" dataKey="count" stroke="#8b5cf6" fill="#8b5cf633" name="Posts" />
                     <Area type="monotone" dataKey="resolved" stroke="#22c55e" fill="#22c55e22" name="Resolved" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -381,10 +393,10 @@ export default function AnalyticsContent() {
                 </div>
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={breakdowns.slice(0, 12)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="label" stroke="#888" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={60} />
-                    <YAxis stroke="#888" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="label" stroke={CHART_AXIS} tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={60} />
+                    <YAxis stroke={CHART_AXIS} tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -396,7 +408,7 @@ export default function AnalyticsContent() {
                     <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} label>
                       {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -405,10 +417,10 @@ export default function AnalyticsContent() {
                 <h3>Severity vs estimated cost</h3>
                 <ResponsiveContainer width="100%" height={260}>
                   <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis type="number" dataKey="x" name="Severity" domain={[0, 5]} stroke="#888" />
-                    <YAxis type="number" dataKey="y" name="Cost" stroke="#888" />
-                    <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis type="number" dataKey="x" name="Severity" domain={[0, 5]} stroke={CHART_AXIS} />
+                    <YAxis type="number" dataKey="y" name="Cost" stroke={CHART_AXIS} />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={CHART_TOOLTIP_STYLE} />
                     <Scatter data={scatter} fill="#3b82f6" />
                   </ScatterChart>
                 </ResponsiveContainer>
@@ -431,7 +443,7 @@ export default function AnalyticsContent() {
                     <option value="school">School district</option>
                   </select>
                   <select value={filters.metric} onChange={(e) => setFilter('metric', e.target.value)}>
-                    <option value="count">Report count</option>
+                    <option value="count">Post count</option>
                     <option value="criticalCount">Critical count</option>
                     <option value="avgSeverity">Avg severity</option>
                     <option value="unresolvedRate">Unresolved rate</option>
@@ -495,10 +507,10 @@ export default function AnalyticsContent() {
                 <h3>Estimated cost over time</h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={timeseries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="bucket" stroke="#888" />
-                    <YAxis stroke="#888" />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="bucket" stroke={CHART_AXIS} />
+                    <YAxis stroke={CHART_AXIS} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Line type="monotone" dataKey="estimatedCost" stroke="#f97316" name="Est. cost" />
                     <Line type="monotone" dataKey="critical" stroke="#ef4444" name="Critical" />
                   </LineChart>
@@ -508,10 +520,10 @@ export default function AnalyticsContent() {
                 <h3>Cost by class</h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={breakdowns.slice(0, 10)}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                    <XAxis dataKey="label" stroke="#888" tick={{ fontSize: 10 }} />
-                    <YAxis stroke="#888" />
-                    <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                    <XAxis dataKey="label" stroke={CHART_AXIS} tick={{ fontSize: 10 }} />
+                    <YAxis stroke={CHART_AXIS} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                     <Bar dataKey="estimatedCost" fill="#f97316" name="Est. cost" />
                     <Bar dataKey="actualCost" fill="#22c55e" name="Actual" />
                   </BarChart>
@@ -529,7 +541,7 @@ export default function AnalyticsContent() {
                     <tr>
                       <th>Name</th>
                       <th>Role</th>
-                      <th>Reports</th>
+                      <th>Posts</th>
                       <th>Accepted</th>
                       <th>Resolved</th>
                       <th>Flags</th>

@@ -35,6 +35,7 @@ export const signupSchema = z.object({
   email: emailField,
   password: newPasswordField,
   displayName: text().pipe(z.string().min(1, 'Display name is required').max(80)),
+  acceptEthics: z.literal(true, { message: 'Please agree to the Code of Ethics to join' }),
 });
 
 // Login accepts any existing password (older accounts predate the length rule).

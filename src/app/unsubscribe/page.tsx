@@ -44,7 +44,7 @@ function UnsubscribeContent() {
           </p>
         ) : (
           <>
-            <p className="auth-subtitle">Stop receiving emails about comments, upvotes and updates on your reports?</p>
+            <p className="auth-subtitle">Stop receiving emails about comments, upvotes and updates on your posts?</p>
             {state === 'error' && <div className="auth-error">{error}</div>}
             <button className="btn-primary auth-btn" onClick={() => void confirmUnsubscribe()} disabled={state === 'working'}>
               {state === 'working' ? 'Unsubscribing…' : 'Unsubscribe'}
@@ -52,7 +52,7 @@ function UnsubscribeContent() {
           </>
         )}
         <p className="auth-footer">
-          <Link href="/dashboard/profile">Profile settings</Link>
+          <Link href="/dashboard/account/profile">Profile settings</Link>
         </p>
       </div>
     </div>

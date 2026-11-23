@@ -44,12 +44,12 @@ export default function PublicFeedPage() {
       </header>
 
       <main className="public-feed">
-        <h1>Community reports</h1>
-        <p className="analytics-subtitle">Browse without signing in. Share any report with a public link.</p>
+        <h1>Community posts</h1>
+        <p className="analytics-subtitle">Browse without signing in. Share any post with a public link.</p>
 
-        {loading && <div className="feed-empty">Loading reports…</div>}
+        {loading && <div className="feed-empty">Loading posts…</div>}
         {!loading && reports.length === 0 && (
-          <div className="feed-empty">No public reports yet.</div>
+          <div className="feed-empty">No public posts yet.</div>
         )}
 
         <div className="public-feed-list">

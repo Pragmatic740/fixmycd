@@ -8,6 +8,7 @@ import { clientIp, parseJsonBody, serverError } from '@/lib/http';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { signupSchema } from '@/lib/validation';
 import { PASSWORD_HASH_COST } from '@/lib/auth';
+import { getCurrentEthics } from '@/lib/ethics';
 
 const PENDING_MESSAGE =
   'Thanks for signing up! An admin will review your account and you will be able to log in once it is approved.';
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
     // signup form cannot be used to discover who has an account.
     if (!existing) {
       const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_COST);
+      const ethics = await getCurrentEthics();
       await db
         .insert(users)
         .values({
@@ -40,6 +42,7 @@ export async function POST(request: Request) {
           passwordHash,
           role: 'submitter',
           status: 'pending',
+          ethicsAcceptedVersion: ethics.version,
           createdAt: new Date(),
         })
         .onConflictDoNothing();

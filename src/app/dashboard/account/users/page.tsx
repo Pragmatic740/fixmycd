@@ -12,6 +12,7 @@ interface AdminUser {
   status: string;
   disabledAt: string | null;
   isSynthetic?: boolean;
+  verificationMethod?: string | null;
   createdAt: string;
 }
 
@@ -132,8 +133,8 @@ export default function AdminPage() {
   return (
     <div>
       <div className="feed-header">
-        <h2>Admin — Users</h2>
-        <Link href="/dashboard/admin/analytics" className="btn-primary btn-sm">
+        <h2>Users &amp; approvals</h2>
+        <Link href="/dashboard/analytics" className="btn-primary btn-sm">
           Open Analytics
         </Link>
       </div>
@@ -186,6 +187,7 @@ export default function AdminPage() {
             <strong>{u.displayName || u.email}</strong>
             {u.id === me!.id && <span className="demo-badge">you</span>}
             {u.isSynthetic && <span className="demo-badge">demo</span>}
+            {u.verificationMethod === 'card_demo' && <span className="demo-badge status-badge-verified">verified by $1</span>}
             {u.status !== 'approved' && <span className={`demo-badge status-badge-${u.status}`}>{u.status}</span>}
             {u.disabledAt && <span className="demo-badge status-badge-rejected">disabled</span>}
             <p className="report-ref">

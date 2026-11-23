@@ -9,8 +9,8 @@ export default function InstallPage() {
     <div
       style={{
         minHeight: '100vh',
-        background: '#000000',
-        color: '#ffffff',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-primary)',
         padding: '40px 20px',
         fontFamily:
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -41,7 +41,7 @@ export default function InstallPage() {
           <p
             style={{
               fontSize: '16px',
-              color: '#c0c0c0',
+              color: 'var(--text-secondary)',
               lineHeight: 1.6,
               maxWidth: '460px',
               margin: '0 auto',
@@ -57,8 +57,8 @@ export default function InstallPage() {
         {/* iOS */}
         <section
           style={{
-            background: '#111111',
-            border: '1px solid #1e1e1e',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
             borderRadius: '16px',
             padding: '24px',
             marginBottom: '16px',
@@ -69,7 +69,7 @@ export default function InstallPage() {
               fontSize: '18px',
               fontWeight: 700,
               marginBottom: '16px',
-              color: '#ffffff',
+              color: 'var(--text-primary)',
             }}
           >
             📱 iPhone / iPad
@@ -79,24 +79,24 @@ export default function InstallPage() {
               paddingLeft: '20px',
               fontSize: '15px',
               lineHeight: 1.8,
-              color: '#c0c0c0',
+              color: 'var(--text-secondary)',
               margin: 0,
             }}
           >
             <li style={{ marginBottom: '8px' }}>
-              Open this page in <strong style={{ color: '#ffffff' }}>Safari</strong>
+              Open this page in <strong style={{ color: 'var(--text-primary)' }}>Safari</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
-              Tap the <strong style={{ color: '#ffffff' }}>Share</strong> button
+              Tap the <strong style={{ color: 'var(--text-primary)' }}>Share</strong> button
               (square with arrow up)
             </li>
             <li style={{ marginBottom: '8px' }}>
               Scroll down and tap{' '}
-              <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home Screen&rdquo;</strong>
+              <strong style={{ color: 'var(--text-primary)' }}>&ldquo;Add to Home Screen&rdquo;</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
-              Name it <strong style={{ color: '#ffffff' }}>FixMyDistrict</strong> and
-              tap <strong style={{ color: '#ffffff' }}>Add</strong>
+              Name it <strong style={{ color: 'var(--text-primary)' }}>FixMyDistrict</strong> and
+              tap <strong style={{ color: 'var(--text-primary)' }}>Add</strong>
             </li>
           </ol>
         </section>
@@ -104,8 +104,8 @@ export default function InstallPage() {
         {/* Android */}
         <section
           style={{
-            background: '#111111',
-            border: '1px solid #1e1e1e',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
             borderRadius: '16px',
             padding: '24px',
             marginBottom: '16px',
@@ -116,7 +116,7 @@ export default function InstallPage() {
               fontSize: '18px',
               fontWeight: 700,
               marginBottom: '16px',
-              color: '#ffffff',
+              color: 'var(--text-primary)',
             }}
           >
             🤖 Android
@@ -126,24 +126,24 @@ export default function InstallPage() {
               paddingLeft: '20px',
               fontSize: '15px',
               lineHeight: 1.8,
-              color: '#c0c0c0',
+              color: 'var(--text-secondary)',
               margin: 0,
             }}
           >
             <li style={{ marginBottom: '8px' }}>
-              Open this page in <strong style={{ color: '#ffffff' }}>Chrome</strong>
+              Open this page in <strong style={{ color: 'var(--text-primary)' }}>Chrome</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
-              Tap the <strong style={{ color: '#ffffff' }}>three-dot menu</strong> in
+              Tap the <strong style={{ color: 'var(--text-primary)' }}>three-dot menu</strong> in
               the top right
             </li>
             <li style={{ marginBottom: '8px' }}>
               Tap{' '}
-              <strong style={{ color: '#ffffff' }}>&ldquo;Install app&rdquo;</strong> or{' '}
-              <strong style={{ color: '#ffffff' }}>&ldquo;Add to Home screen&rdquo;</strong>
+              <strong style={{ color: 'var(--text-primary)' }}>&ldquo;Install app&rdquo;</strong> or{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>&ldquo;Add to Home screen&rdquo;</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
-              Confirm by tapping <strong style={{ color: '#ffffff' }}>Install</strong>
+              Confirm by tapping <strong style={{ color: 'var(--text-primary)' }}>Install</strong>
             </li>
           </ol>
         </section>
@@ -151,8 +151,8 @@ export default function InstallPage() {
         {/* Desktop */}
         <section
           style={{
-            background: '#111111',
-            border: '1px solid #1e1e1e',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
             borderRadius: '16px',
             padding: '24px',
             marginBottom: '24px',
@@ -163,7 +163,7 @@ export default function InstallPage() {
               fontSize: '18px',
               fontWeight: 700,
               marginBottom: '16px',
-              color: '#ffffff',
+              color: 'var(--text-primary)',
             }}
           >
             💻 Desktop (Chrome / Edge)
@@ -173,22 +173,22 @@ export default function InstallPage() {
               paddingLeft: '20px',
               fontSize: '15px',
               lineHeight: 1.8,
-              color: '#c0c0c0',
+              color: 'var(--text-secondary)',
               margin: 0,
             }}
           >
             <li style={{ marginBottom: '8px' }}>
               Open this page in{' '}
-              <strong style={{ color: '#ffffff' }}>Chrome</strong> or{' '}
-              <strong style={{ color: '#ffffff' }}>Edge</strong>
+              <strong style={{ color: 'var(--text-primary)' }}>Chrome</strong> or{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>Edge</strong>
             </li>
             <li style={{ marginBottom: '8px' }}>
               Look for the{' '}
-              <strong style={{ color: '#ffffff' }}>Install</strong> icon in the
+              <strong style={{ color: 'var(--text-primary)' }}>Install</strong> icon in the
               address bar
             </li>
             <li style={{ marginBottom: '8px' }}>
-              Click <strong style={{ color: '#ffffff' }}>Install</strong>
+              Click <strong style={{ color: 'var(--text-primary)' }}>Install</strong>
             </li>
           </ol>
         </section>
@@ -208,7 +208,7 @@ export default function InstallPage() {
               fontSize: '18px',
               fontWeight: 700,
               marginBottom: '12px',
-              color: '#ffffff',
+              color: 'var(--text-primary)',
             }}
           >
             ✨ Why Install?
@@ -220,27 +220,27 @@ export default function InstallPage() {
               margin: 0,
               fontSize: '15px',
               lineHeight: 1.8,
-              color: '#c0c0c0',
+              color: 'var(--text-secondary)',
             }}
           >
             <li style={{ marginBottom: '8px' }}>
-              ✅ <strong style={{ color: '#ffffff' }}>Full-screen</strong> — no
+              ✅ <strong style={{ color: 'var(--text-primary)' }}>Full-screen</strong> — no
               browser bars
             </li>
             <li style={{ marginBottom: '8px' }}>
-              ✅ <strong style={{ color: '#ffffff' }}>Home screen icon</strong> — like
+              ✅ <strong style={{ color: 'var(--text-primary)' }}>Home screen icon</strong> — like
               a native app
             </li>
             <li style={{ marginBottom: '8px' }}>
-              ✅ <strong style={{ color: '#ffffff' }}>Works offline</strong> — for
+              ✅ <strong style={{ color: 'var(--text-primary)' }}>Works offline</strong> — for
               previously visited pages
             </li>
             <li style={{ marginBottom: '8px' }}>
-              ✅ <strong style={{ color: '#ffffff' }}>Faster loading</strong> — cached
+              ✅ <strong style={{ color: 'var(--text-primary)' }}>Faster loading</strong> — cached
               assets
             </li>
             <li style={{ marginBottom: '8px' }}>
-              ✅ <strong style={{ color: '#ffffff' }}>No app store</strong> — install
+              ✅ <strong style={{ color: 'var(--text-primary)' }}>No app store</strong> — install
               directly
             </li>
           </ul>

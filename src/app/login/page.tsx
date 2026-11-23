@@ -51,9 +51,19 @@ export default function LoginPage() {
           <span>FixMyDistrict</span>
         </Link>
         <h2>Log in to your account</h2>
-        <p className="auth-subtitle">Access your local feed and report issues</p>
+        <p className="auth-subtitle">Access your local feed and post issues</p>
 
-        {error && <div className="auth-error">{error}</div>}
+        {error && (
+          <div className="auth-error">
+            {error}
+            {/pending approval/i.test(error) && (
+              <>
+                {' '}
+                <Link href={`/verify?email=${encodeURIComponent(email)}`}>Skip the wait with a $1 check (demo)</Link>
+              </>
+            )}
+          </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="form-group">

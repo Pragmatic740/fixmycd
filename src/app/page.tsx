@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function LandingPage() {
   return (
@@ -10,10 +11,11 @@ export default function LandingPage() {
           <span>FixMyDistrict</span>
         </div>
         <div className="landing-nav-links">
+          <ThemeToggle compact />
           <Link href="#features">Features</Link>
           <Link href="#how-it-works">How it works</Link>
           <Link href="/public" className="btn-secondary">
-            Browse reports
+            Browse posts
           </Link>
           <Link href="/dashboard" className="btn-primary">
             Launch App
@@ -33,7 +35,7 @@ export default function LandingPage() {
             Start Reporting
           </Link>
           <Link href="/public" className="btn-secondary">
-            Browse reports
+            Browse posts
           </Link>
         </div>
       </section>
@@ -45,9 +47,9 @@ export default function LandingPage() {
         
         <div className="features-grid">
           <div className="feature-card">
-            <img src="/hero-asset-1.svg" alt="Report easily" className="feature-card-icon" />
-            <h3>Report Instantly</h3>
-            <p>Snap a photo, tag the location on the map, and submit your report in less than 30 seconds.</p>
+            <img src="/hero-asset-1.svg" alt="Post easily" className="feature-card-icon" />
+            <h3>Post Instantly</h3>
+            <p>Snap a photo, tag the location on the map, and submit your post in less than 30 seconds.</p>
           </div>
           <div className="feature-card">
             <img src="/hero-asset-2.svg" alt="Community upvotes" className="feature-card-icon" />
@@ -57,7 +59,7 @@ export default function LandingPage() {
           <div className="feature-card">
             <img src="/hero-asset-3.svg" alt="Track progress" className="feature-card-icon" />
             <h3>Track Progress</h3>
-            <p>Receive updates when your report is acknowledged, assigned, and finally resolved.</p>
+            <p>Receive updates when your post is acknowledged, assigned, and finally resolved.</p>
           </div>
         </div>
       </section>
@@ -87,6 +89,9 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="landing-footer">
         <p>&copy; {new Date().getFullYear()} FixMyDistrict. Built for the community.</p>
+        <p className="landing-footer-links">
+          <Link href="/ethics">Code of Ethics</Link> · <Link href="/donate">Donate</Link>
+        </p>
       </footer>
     </>
   );

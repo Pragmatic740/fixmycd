@@ -2,11 +2,16 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { DemoCheckout, postPayment } from '@/components/DemoCheckout';
+import { WhyOneDollar } from '@/components/WhyOneDollar';
 
 export default function SignupPage() {
+  const router = useRouter();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [acceptEthics, setAcceptEthics] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -22,7 +27,7 @@ export default function SignupPage() {
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName }),
+        body: JSON.stringify({ email, password, displayName, acceptEthics }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -54,13 +59,24 @@ export default function SignupPage() {
         {pendingMessage ? (
           <div className="auth-pending" role="status">
             <h2>Almost there</h2>
+            <WhyOneDollar />
+            <DemoCheckout
+              amountCents={100}
+              buttonLabel="Pay $1 and start posting"
+              onPay={async (card) => {
+                const result = await postPayment('/api/verify', { email, password, card });
+                if (result.ok) router.push('/dashboard');
+                return result;
+              }}
+            />
+            <p className="auth-subtitle auth-or">Or wait for an admin</p>
             <p className="auth-subtitle">{pendingMessage}</p>
             <p className="auth-subtitle">
               We&apos;ll email <strong>{email.trim().toLowerCase()}</strong> when an admin has reviewed your request.
-              Meanwhile you can browse reports as a guest.
+              Meanwhile you can browse posts as a guest.
             </p>
-            <Link href="/dashboard" className="btn-primary auth-btn">
-              Browse reports
+            <Link href="/dashboard" className="btn-secondary auth-btn">
+              Browse posts as a guest
             </Link>
             <p className="auth-footer">
               Already approved? <Link href="/login">Log In</Link>
@@ -69,7 +85,7 @@ export default function SignupPage() {
         ) : (
           <>
             <h2>Create your account</h2>
-            <p className="auth-subtitle">Join the local community to report and track infrastructure issues</p>
+            <p className="auth-subtitle">Join the local community to post and track infrastructure issues</p>
 
             {error && <div className="auth-error">{error}</div>}
 
@@ -119,6 +135,28 @@ export default function SignupPage() {
                   required
                 />
                 {fieldErrors.password && <p className="field-error">{fieldErrors.password}</p>}
+              </div>
+
+              <div className="form-group">
+                <label className="filter-checkbox ethics-agree">
+                  <input
+                    type="checkbox"
+                    checked={acceptEthics}
+                    onChange={(e) => setAcceptEthics(e.target.checked)}
+                    aria-invalid={!!fieldErrors.acceptEthics}
+                    aria-describedby="ethics-help"
+                  />
+                  <span>
+                    I agree to the{' '}
+                    <a href="/ethics" target="_blank" rel="noopener">
+                      Code of Ethics
+                    </a>
+                  </span>
+                </label>
+                <p id="ethics-help" className="field-hint">
+                  Be truthful, be respectful, protect privacy and act in good faith.
+                </p>
+                {fieldErrors.acceptEthics && <p className="field-error">{fieldErrors.acceptEthics}</p>}
               </div>
 
               <button type="submit" className="btn-primary auth-btn" disabled={loading}>

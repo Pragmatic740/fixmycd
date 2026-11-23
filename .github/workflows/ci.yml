@@ -15,7 +15,8 @@ permissions:
 jobs:
   checks:
     name: Lint, typecheck, tests, build
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.56 can't install Chromium on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -49,7 +50,7 @@ jobs:
 
   e2e:
     name: End-to-end (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: checks
     services:

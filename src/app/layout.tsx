@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import { PWARegister } from '@/components/PWARegister';
+import { ThemeController } from '@/components/ThemeToggle';
+import { themeInitScript } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'FixMyDistrict',
-  description: 'Report and track infrastructure failures in your district.',
+  description: 'Post and track infrastructure failures in your district.',
   manifest: '/manifest.json',
   applicationName: 'FixMyDistrict',
   appleWebApp: {
@@ -37,9 +39,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    // Light is the default; the inline script swaps in a saved choice (or the device
+    // setting for "System") before the first paint, so the DOM wins over hydration.
+    <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         {children}
+        <ThemeController />
         <PWARegister />
       </body>
     </html>

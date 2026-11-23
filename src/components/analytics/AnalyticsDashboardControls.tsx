@@ -33,6 +33,8 @@ interface Props {
   filters: Filters;
   setFilters: (next: Filters | ((prev: Filters) => Filters)) => void;
   queryString: string;
+  /** Saved dashboards and data import are admin tools; sharing and export are for everyone. */
+  isAdmin: boolean;
 }
 
 function formatViewLabel(v: SavedView): string {
@@ -46,7 +48,7 @@ function formatViewLabel(v: SavedView): string {
   return v.name;
 }
 
-export default function AnalyticsDashboardControls({ filters, setFilters, queryString }: Props) {
+export default function AnalyticsDashboardControls({ filters, setFilters, queryString, isAdmin }: Props) {
   const [views, setViews] = useState<SavedView[]>([]);
   const [selectedViewId, setSelectedViewId] = useState('');
   const [manageOpen, setManageOpen] = useState(false);
@@ -71,7 +73,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
   }, []);
 
   const loadShares = useCallback(async () => {
-    const res = await fetch('/api/admin/analytics/shares');
+    const res = await fetch('/api/analytics/shares');
     const data = await res.json();
     if (Array.isArray(data)) setShares(data);
   }, []);
@@ -79,8 +81,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch('/api/admin/analytics/views').then((r) => r.json()),
-      fetch('/api/admin/analytics/shares').then((r) => r.json()),
+      isAdmin ? fetch('/api/admin/analytics/views').then((r) => r.json()) : Promise.resolve([]),
+      fetch('/api/analytics/shares').then((r) => r.json()),
     ])
       .then(([viewData, shareData]) => {
         if (cancelled) return;
@@ -91,7 +93,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAdmin]);
 
   const selectedView = views.find((v) => v.id === selectedViewId);
 
@@ -187,7 +189,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
 
   const shareDashboard = async () => {
     const label = views.find((v) => v.id === selectedViewId)?.name || 'Shared dashboard';
-    const res = await fetch('/api/admin/analytics/shares', {
+    const res = await fetch('/api/analytics/shares', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filters, label, savedViewId: selectedViewId || null }),
@@ -204,7 +206,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
 
   const revokeShare = async (id: string) => {
     if (!window.confirm('Revoke this share link? Anyone with the URL will lose access.')) return;
-    const res = await fetch(`/api/admin/analytics/shares?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await fetch(`/api/analytics/shares?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (res.ok) {
       setShares((prev) => prev.filter((s) => s.id !== id));
       setMessage('Share revoked');
@@ -235,7 +237,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
   const exportDataCsv = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`/api/admin/analytics/reports?${queryString}&format=csv`);
+      const res = await fetch(`/api/analytics/reports?${queryString}&format=csv`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setMessage(data.error || 'Export failed');
@@ -291,6 +293,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
   return (
     <div className="analytics-dashboard-controls">
       <div className="analytics-dashboard-row">
+        {isAdmin && (
+          <>
         <select
           value={selectedViewId}
           onChange={(e) => applyView(e.target.value)}
@@ -307,6 +311,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
         <button type="button" className="btn-secondary btn-sm" onClick={() => setManageOpen((o) => !o)}>
           Manage list
         </button>
+          </>
+        )}
         <button type="button" className="btn-primary btn-sm" onClick={shareDashboard}>
           Share this dashboard
         </button>
@@ -344,7 +350,8 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
       </div>
 
       <p className="analytics-hint">
-        Setup CSV saves/restores filter parameters only. Data CSV exports report rows (use Upload data CSV below to import inventory).
+        Setup CSV saves/restores filter parameters only. Data CSV exports the matching posts
+        {isAdmin ? ' (use Upload data CSV below to import inventory)' : ''}.
       </p>
 
       {selectedView && (
@@ -470,6 +477,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
         </div>
       )}
 
+      {isAdmin && (
       <div className="analytics-import-data">
         <h4>Import data CSV (photos optional)</h4>
         <div className="analytics-dashboard-row">
@@ -506,6 +514,7 @@ export default function AnalyticsDashboardControls({ filters, setFilters, queryS
         </div>
         {importResult && <p className="analytics-hint">{importResult}</p>}
       </div>
+      )}
 
       {message && <p className="analytics-hint">{message}</p>}
     </div>

@@ -45,6 +45,15 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION:
       process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || process.env.NEXT_PUBLIC_APP_VERSION || `build-${Date.now()}`,
   },
+  // Pages that moved. Query strings (e.g. analytics filters) are carried over.
+  async redirects() {
+    return [
+      { source: '/dashboard/admin/analytics', destination: '/dashboard/analytics', permanent: false },
+      { source: '/dashboard/admin', destination: '/dashboard/account/users', permanent: false },
+      // Older notification emails link here for email settings.
+      { source: '/dashboard/profile', destination: '/dashboard/account/profile', permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

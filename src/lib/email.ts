@@ -40,7 +40,7 @@ const button = (url: string, label: string) =>
 const reportUrl = (reportId: string) => `${BASE_URL}/dashboard/reports/${encodeURIComponent(reportId)}`;
 
 function footer(unsubscribeUrl?: string): string {
-  const settings = `${BASE_URL}/dashboard/profile`;
+  const settings = `${BASE_URL}/dashboard/account/profile`;
   const unsub = unsubscribeUrl
     ? ` or <a href="${escapeHtml(unsubscribeUrl)}">unsubscribe with one click</a>`
     : '';
@@ -87,10 +87,10 @@ export async function sendCommentNotification({
     to,
     subject: `New comment on "${quoteTitle(reportTitle)}"`,
     html: `
-      <h2>New comment on your report</h2>
+      <h2>New comment on your post</h2>
       <p><strong>${escapeHtml(commenterName)}</strong> commented on <strong>${escapeHtml(reportTitle)}</strong>:</p>
       <blockquote style="border-left: 3px solid #8b5cf6; padding-left: 12px; color: #555; white-space: pre-wrap;">${escapeHtml(commentBody)}</blockquote>
-      ${button(reportUrl(reportId), 'View Report')}
+      ${button(reportUrl(reportId), 'View Post')}
       ${footer(unsubscribeUrl)}
     `,
   });
@@ -111,11 +111,11 @@ export async function sendUpvoteNotification({
 }): Promise<boolean> {
   return sendEmail({
     to,
-    subject: `Your report "${quoteTitle(reportTitle)}" got an upvote`,
+    subject: `Your post "${quoteTitle(reportTitle)}" got an upvote`,
     html: `
-      <h2>Someone upvoted your report</h2>
-      <p>Your report <strong>${escapeHtml(reportTitle)}</strong> now has <strong>${Number(upvoteCount)}</strong> upvote(s).</p>
-      ${button(reportUrl(reportId), 'View Report')}
+      <h2>Someone upvoted your post</h2>
+      <p>Your post <strong>${escapeHtml(reportTitle)}</strong> now has <strong>${Number(upvoteCount)}</strong> upvote(s).</p>
+      ${button(reportUrl(reportId), 'View Post')}
       ${footer(unsubscribeUrl)}
     `,
   });
@@ -136,11 +136,11 @@ export async function sendStatusChangeNotification({
 }): Promise<boolean> {
   return sendEmail({
     to,
-    subject: `Your report "${quoteTitle(reportTitle)}" status changed`,
+    subject: `Your post "${quoteTitle(reportTitle)}" status changed`,
     html: `
-      <h2>Your report status has changed</h2>
-      <p>Your report <strong>${escapeHtml(reportTitle)}</strong> is now: <strong>${escapeHtml(newStatus.replace(/_/g, ' '))}</strong>.</p>
-      ${button(reportUrl(reportId), 'View Report')}
+      <h2>Your post status has changed</h2>
+      <p>Your post <strong>${escapeHtml(reportTitle)}</strong> is now: <strong>${escapeHtml(newStatus.replace(/_/g, ' '))}</strong>.</p>
+      ${button(reportUrl(reportId), 'View Post')}
       ${footer(unsubscribeUrl)}
     `,
   });
@@ -165,9 +165,9 @@ export async function sendEndorsementNotification({
     to,
     subject: `An expert reviewed "${quoteTitle(reportTitle)}"`,
     html: `
-      <h2>Your report was endorsed by an expert</h2>
+      <h2>Your post was endorsed by an expert</h2>
       <p><strong>${escapeHtml(expertName)}</strong> rated <strong>${escapeHtml(reportTitle)}</strong> at severity <strong>${Number(severityLevel)}/5</strong>.</p>
-      ${button(reportUrl(reportId), 'View Report')}
+      ${button(reportUrl(reportId), 'View Post')}
       ${footer(unsubscribeUrl)}
     `,
   });
@@ -189,7 +189,7 @@ export async function sendAccountDecisionEmail({
         subject: 'Your FixMyDistrict account is approved',
         html: `
           <h2>Welcome, ${name}!</h2>
-          <p>Your account has been approved. You can now log in to report issues, comment and upvote.</p>
+          <p>Your account has been approved. You can now log in to post issues, comment and upvote.</p>
           ${button(`${BASE_URL}/login`, 'Log in')}
         `,
       })

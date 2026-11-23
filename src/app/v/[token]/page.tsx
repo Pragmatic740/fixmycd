@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import type { AnalyticsSummary, BreakdownItem, TimeSeriesPoint } from '@/lib/analytics-types';
 import ShareSheet from '@/components/ShareSheet';
+import { CHART_AXIS, CHART_GRID, CHART_TOOLTIP_STYLE } from '@/components/analytics/chartTheme';
 
 const COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#eab308', '#ef4444', '#06b6d4', '#f97316', '#a855f7'];
 
@@ -160,7 +161,7 @@ export default function SharedAnalyticsViewerPage() {
         {summary && (
           <div className="analytics-kpi-grid">
             <div className="kpi-card">
-              <span>Reports</span>
+              <span>Posts</span>
               <strong>{summary.totalReports}</strong>
             </div>
             <div className="kpi-card">
@@ -185,11 +186,11 @@ export default function SharedAnalyticsViewerPage() {
             <h3>Volume over time</h3>
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={timeseries}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="bucket" stroke="#888" />
-                <YAxis stroke="#888" />
-                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
-                <Line type="monotone" dataKey="count" stroke="#8b5cf6" name="Reports" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="bucket" stroke={CHART_AXIS} />
+                <YAxis stroke={CHART_AXIS} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                <Line type="monotone" dataKey="count" stroke="#8b5cf6" name="Posts" />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -199,10 +200,10 @@ export default function SharedAnalyticsViewerPage() {
             <h3>By class</h3>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={byClass.slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="label" stroke="#888" tick={{ fontSize: 10 }} />
-                <YAxis stroke="#888" />
-                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="label" stroke={CHART_AXIS} tick={{ fontSize: 10 }} />
+                <YAxis stroke={CHART_AXIS} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                 <Bar dataKey="count" fill="#3b82f6" />
               </BarChart>
             </ResponsiveContainer>
@@ -226,7 +227,7 @@ export default function SharedAnalyticsViewerPage() {
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -236,10 +237,10 @@ export default function SharedAnalyticsViewerPage() {
             <h3>By severity</h3>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={bySeverity}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="label" stroke="#888" />
-                <YAxis stroke="#888" />
-                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="label" stroke={CHART_AXIS} />
+                <YAxis stroke={CHART_AXIS} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                 <Bar dataKey="count" fill="#eab308" />
               </BarChart>
             </ResponsiveContainer>
@@ -250,10 +251,10 @@ export default function SharedAnalyticsViewerPage() {
             <h3>By infrastructure type</h3>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={byInfraType.slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="label" stroke="#888" tick={{ fontSize: 10 }} />
-                <YAxis stroke="#888" />
-                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="label" stroke={CHART_AXIS} tick={{ fontSize: 10 }} />
+                <YAxis stroke={CHART_AXIS} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                 <Bar dataKey="count" fill="#22c55e" />
               </BarChart>
             </ResponsiveContainer>
@@ -264,11 +265,11 @@ export default function SharedAnalyticsViewerPage() {
             <h3>Scatter</h3>
             <ResponsiveContainer width="100%" height={240}>
               <ScatterChart>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                <XAxis dataKey="x" name="X" stroke="#888" />
-                <YAxis dataKey="y" name="Y" stroke="#888" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                <XAxis dataKey="x" name="X" stroke={CHART_AXIS} />
+                <YAxis dataKey="y" name="Y" stroke={CHART_AXIS} />
                 <ZAxis range={[40, 200]} />
-                <Tooltip contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                 <Scatter data={scatter} fill="#a855f7" />
               </ScatterChart>
             </ResponsiveContainer>
@@ -308,7 +309,7 @@ export default function SharedAnalyticsViewerPage() {
 
         {/* Reports Table */}
         <div className="chart-panel" style={{ marginTop: 16 }}>
-          <h3>Reports ({table.total})</h3>
+          <h3>Posts ({table.total})</h3>
           <div className="analytics-table-wrap">
             <table className="analytics-table">
               <thead>
